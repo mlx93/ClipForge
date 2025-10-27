@@ -18,7 +18,6 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "assets/icon.icns",
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "hardenedRuntime": true,
@@ -26,8 +25,7 @@
     "notarize": false
   },
   "win": {
-    "target": "nsis",
-    "icon": "assets/icon.ico"
+    "target": "nsis"
   },
   "nsis": {
     "oneClick": false,
@@ -36,7 +34,6 @@
     "createStartMenuShortcut": true
   },
   "linux": {
-    "target": "AppImage",
-    "icon": "assets/icon.png"
+    "target": "AppImage"
   }
 }
