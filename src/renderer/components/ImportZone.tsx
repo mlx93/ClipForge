@@ -32,6 +32,7 @@ const ImportZone: React.FC<ImportZoneProps> = ({ onImport }) => {
 
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
+    event.stopPropagation();
     setIsDragOver(false);
     
     const files = Array.from(event.dataTransfer.files);

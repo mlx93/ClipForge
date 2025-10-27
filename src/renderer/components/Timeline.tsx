@@ -38,8 +38,9 @@ const Timeline: React.FC = () => {
       } else {
         // Clicked on empty space - move playhead
         const pointer = canvas.getPointer(event.e);
-        const clickedTime = (pointer.x / (canvas.width! * zoom)) * totalDuration;
-        setPlayhead(Math.max(0, clickedTime));
+        const clickedTime = (pointer.x / canvas.width!) * totalDuration;
+        setPlayhead(Math.max(0, Math.min(clickedTime, totalDuration)));
+        console.log('Playhead moved to:', formatTime(clickedTime), 'at x:', pointer.x);
       }
     });
 
@@ -124,12 +125,40 @@ const Timeline: React.FC = () => {
     if (!fabricCanvasRef.current) return;
 
     const canvas = fabricCanvasRef.current;
-    const timeInterval = 5;
     const pixelsPerSecond = (canvas.width! * zoom) / Math.max(totalDuration, 60);
 
     // Clear existing grid
     const existingGrid = canvas.getObjects().filter(obj => obj.gridLine);
     existingGrid.forEach(obj => canvas.remove(obj));
+
+    // If no clips, show empty timeline message
+    if (clips.length === 0) {
+      const emptyText = new fabric.Text('Timeline Empty\nDrag videos here to start editing', {
+        left: canvas.width! / 2,
+        top: canvas.height! / 2,
+        fontSize: 16,
+        fill: '#666',
+        fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+        textAlign: 'center',
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false,
+        gridLine: true,
+      });
+      canvas.add(emptyText);
+      return;
+    }
+
+    // Calculate appropriate time interval based on zoom
+    let timeInterval = 5;
+    const minSpacing = 80; // Minimum pixels between markers
+    const currentSpacing = timeInterval * pixelsPerSecond;
+    
+    if (currentSpacing < minSpacing) {
+      // If markers are too close, increase interval
+      timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
+    }
 
     // Draw time markers
     for (let time = 0; time <= totalDuration; time += timeInterval) {
@@ -166,8 +195,9 @@ const Timeline: React.FC = () => {
     if (!fabricCanvasRef.current) return;
 
     const canvas = fabricCanvasRef.current;
-    const pixelsPerSecond = (canvas.width! * zoom) / Math.max(totalDuration, 60);
-    const x = (playhead / totalDuration) * canvas.width! * zoom;
+    
+    // Calculate x position based on playhead time
+    const x = totalDuration > 0 ? (playhead / totalDuration) * canvas.width! : 0;
 
     // Remove existing playhead
     const existingPlayhead = canvas.getObjects().filter(obj => obj.playhead);
@@ -184,7 +214,7 @@ const Timeline: React.FC = () => {
 
     // Draw playhead triangle
     const triangle = new fabric.Triangle({
-      left: x,
+      left: x - 6,
       top: 0,
       width: 12,
       height: 12,
@@ -237,6 +267,8 @@ const Timeline: React.FC = () => {
     drawTimelineGrid();
     renderClips();
     drawPlayhead();
+    
+    console.log('Timeline updated:', { clips: clips.length, totalDuration, zoom });
   }, [clips, playhead, totalDuration, zoom, isInitialized]);
 
   // Handle window resize
@@ -256,19 +288,8 @@ const Timeline: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  if (clips.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-gray-400">
-        <div className="text-center">
-          <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 002-2v14a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-lg font-medium">Timeline Empty</p>
-          <p className="text-sm">Import videos to start editing</p>
-        </div>
-      </div>
-    );
-  }
+  // Always show the timeline, even when empty
+  // The empty state will be handled by the canvas content
 
   return (
     <div className="h-full flex flex-col">

@@ -58,6 +58,8 @@ const App: React.FC = () => {
 
   const handleFileDrop = (event: React.DragEvent) => {
     event.preventDefault();
+    event.stopPropagation();
+    
     const files = Array.from(event.dataTransfer.files);
     const videoFiles = files.filter(file => 
       file.type.startsWith('video/') || 
@@ -74,6 +76,7 @@ const App: React.FC = () => {
 
   const handleFileDragOver = (event: React.DragEvent) => {
     event.preventDefault();
+    event.stopPropagation();
   };
 
   return (
@@ -83,13 +86,19 @@ const App: React.FC = () => {
       onDragOver={handleFileDragOver}
     >
       {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between" style={{ paddingTop: 'calc(env(titlebar-area-height, 28px) + 20px)' }}>
+      <header 
+        className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between" 
+        style={{ 
+          paddingTop: '20px',
+          WebkitAppRegion: 'drag'
+        }}
+      >
         <div className="flex items-center space-x-4">
           <h1 className="text-xl font-bold text-white">ClipForge</h1>
           <span className="text-sm text-gray-400">v1.0.0</span>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2" style={{ WebkitAppRegion: 'no-drag' }}>
           <button
             onClick={() => setShowExportDialog(true)}
             disabled={clips.length === 0 || isExporting}
@@ -116,13 +125,13 @@ const App: React.FC = () => {
 
         {/* Center Panel - Timeline and Preview */}
         <div className="flex-1 flex flex-col">
-          {/* Video Preview */}
-          <div className="h-80 bg-black border-b border-gray-700 flex items-center justify-center">
+          {/* Video Preview - Larger space */}
+          <div className="flex-1 bg-black border-b border-gray-700 flex items-center justify-center min-h-[400px]">
             <VideoPreview />
           </div>
 
-          {/* Timeline */}
-          <div className="flex-1 timeline-container">
+          {/* Timeline - Smaller space */}
+          <div className="h-64 timeline-container">
             <Timeline />
           </div>
         </div>

@@ -19,7 +19,7 @@ const createWindow = (): void => {
       enableRemoteModule: false,
       preload: join(__dirname, '../preload/preload.cjs')
     },
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: 'hidden',
     show: false, // Don't show until ready
     icon: join(__dirname, '../../assets/icon.png')
   });
@@ -27,7 +27,8 @@ const createWindow = (): void => {
   // Load the app
   if (isDev()) {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
-    mainWindow.webContents.openDevTools();
+    // DevTools closed by default - user can open with Cmd+Option+I
+    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
