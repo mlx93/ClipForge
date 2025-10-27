@@ -148,9 +148,10 @@ const App: React.FC = () => {
       )}
 
       {/* Export Dialog */}
-      {showExportDialog && (
-        <ExportDialog onClose={() => setShowExportDialog(false)} />
-      )}
+      <ExportDialog 
+        isOpen={showExportDialog} 
+        onClose={() => setShowExportDialog(false)} 
+      />
     </div>
   );
 };

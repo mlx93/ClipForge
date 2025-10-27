@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { ExportState, ExportSettings, Clip } from '@shared/types';
+import { IPC_CHANNELS } from '@shared/constants';
 
 interface ExportStore extends ExportState {
   // Actions
@@ -36,20 +37,31 @@ export const useExportStore = create<ExportStore>((set) => ({
     });
 
     try {
-      // Set up progress listener
-      const progressHandler = (progress: { progress: number; currentStep: string }) => {
+      // Set up progress listener for IPC events
+      const handleProgress = (progress: { progress: number; currentStep: string }) => {
         set({
           progress: progress.progress,
           currentStep: progress.currentStep
         });
       };
 
+      // Listen for progress updates from main process
+      window.electron.on('export-progress', handleProgress);
+
       // Call main process to start export
-      const outputPath = await window.electron.invoke('export-timeline', {
+      const result = await window.electron.invoke(IPC_CHANNELS.EXPORT_TIMELINE, {
         clips,
-        settings,
-        onProgress: progressHandler
+        settings
       });
+
+      // Remove progress listener
+      window.electron.removeListener('export-progress', handleProgress);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Export failed');
+      }
+
+      const outputPath = result.outputPath;
 
       set({
         isExporting: false,

@@ -71,6 +71,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
     }));
   },
 
+
   setPlayhead: (time: number) => {
     set({ playhead: Math.max(0, time) });
   },

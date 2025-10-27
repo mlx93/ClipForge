@@ -47,7 +47,8 @@ export const IPC_CHANNELS = {
   EXPORT_COMPLETE: 'export-complete',
   GET_VIDEO_METADATA: 'get-video-metadata',
   SAVE_PROJECT: 'save-project',
-  LOAD_PROJECT: 'load-project'
+  LOAD_PROJECT: 'load-project',
+  SHOW_SAVE_DIALOG: 'show-save-dialog'
 } as const;
 
 // Error messages

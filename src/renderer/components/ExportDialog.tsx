@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTimelineStore } from '../store/timelineStore';
 import { useExportStore } from '../store/exportStore';
 import { ExportSettings } from '@shared/types';
+import { IPC_CHANNELS } from '@shared/constants';
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
 
   const handleFileSelect = async () => {
     try {
-      const result = await window.electron.invoke('show-save-dialog', {
+      const result = await window.electron.invoke(IPC_CHANNELS.SHOW_SAVE_DIALOG, {
         title: 'Export Video',
         defaultPath: 'clipforge-export.mp4',
         filters: [
