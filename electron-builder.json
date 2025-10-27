@@ -1,0 +1,42 @@
+{
+  "appId": "com.clipforge.app",
+  "productName": "ClipForge",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "node_modules/**/*",
+    "!node_modules/.cache/**/*",
+    "!**/*.map"
+  ],
+  "mac": {
+    "category": "public.app-category.video",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "assets/icon.icns",
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "notarize": false
+  },
+  "win": {
+    "target": "nsis",
+    "icon": "assets/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "assets/icon.png"
+  }
+}
