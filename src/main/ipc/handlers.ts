@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { 
   ImportVideosRequest, 
   ImportVideosResponse, 
@@ -64,6 +64,17 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to get metadata'
       };
+    }
+  });
+
+  // Show save dialog handler
+  ipcMain.handle('show-save-dialog', async (_, options: any) => {
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, options);
+      return result;
+    } catch (error) {
+      console.error('Save dialog error:', error);
+      return { canceled: true };
     }
   });
 };

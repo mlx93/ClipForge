@@ -51,10 +51,34 @@ const VideoPreview: React.FC = () => {
     const timeInClip = playhead - clipStartTime;
     const videoTime = currentClip.trimStart + timeInClip;
     
+    // Only seek if the difference is significant to avoid constant seeking
     if (Math.abs(video.currentTime - videoTime) > 0.1) {
       video.currentTime = videoTime;
     }
   }, [playhead, currentClip, clips]);
+
+  // Sync timeline playhead when video is playing
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !currentClip || !isPlaying) return;
+
+    const interval = setInterval(() => {
+      if (video.paused) return;
+
+      // Calculate the current timeline time based on video currentTime
+      let clipStartTime = 0;
+      for (const clip of clips) {
+        if (clip.id === currentClip.id) break;
+        const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
+        clipStartTime += clipDuration;
+      }
+
+      const timelineTime = clipStartTime + (video.currentTime - currentClip.trimStart);
+      useTimelineStore.getState().setPlayhead(timelineTime);
+    }, 100); // Update every 100ms for smooth playback
+
+    return () => clearInterval(interval);
+  }, [isPlaying, currentClip, clips]);
 
   // Handle video events
   const handleLoadedMetadata = () => {
@@ -88,6 +112,68 @@ const VideoPreview: React.FC = () => {
     } else {
       video.pause();
     }
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return; // Don't handle shortcuts when typing in inputs
+      }
+
+      switch (event.code) {
+        case 'Space':
+          event.preventDefault();
+          togglePlayPause();
+          break;
+        case 'ArrowLeft':
+          event.preventDefault();
+          seekRelative(-5); // Seek back 5 seconds
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          seekRelative(5); // Seek forward 5 seconds
+          break;
+        case 'Home':
+          event.preventDefault();
+          useTimelineStore.getState().setPlayhead(0);
+          break;
+        case 'End':
+          event.preventDefault();
+          const totalDuration = useTimelineStore.getState().totalDuration;
+          useTimelineStore.getState().setPlayhead(totalDuration);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
+
+  const seekRelative = (seconds: number) => {
+    const newTime = Math.max(0, Math.min(playhead + seconds, useTimelineStore.getState().totalDuration));
+    useTimelineStore.getState().setPlayhead(newTime);
+  };
+
+  const handleProgressClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const video = videoRef.current;
+    if (!video || !currentClip) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const percentage = clickX / rect.width;
+    const newVideoTime = percentage * duration;
+
+    // Calculate the corresponding timeline time
+    let clipStartTime = 0;
+    for (const clip of clips) {
+      if (clip.id === currentClip.id) break;
+      const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
+      clipStartTime += clipDuration;
+    }
+
+    const timelineTime = clipStartTime + (newVideoTime - currentClip.trimStart);
+    useTimelineStore.getState().setPlayhead(timelineTime);
   };
 
   const formatTime = (seconds: number): string => {
@@ -153,7 +239,10 @@ const VideoPreview: React.FC = () => {
           </div>
 
           {/* Progress bar */}
-          <div className="flex-1 bg-gray-600 rounded-full h-2">
+          <div 
+            className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer relative"
+            onClick={handleProgressClick}
+          >
             <div 
               className="bg-blue-500 h-2 rounded-full transition-all duration-100"
               style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
