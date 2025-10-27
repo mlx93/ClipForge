@@ -83,7 +83,7 @@ const App: React.FC = () => {
       onDragOver={handleFileDragOver}
     >
       {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between" style={{ paddingTop: 'calc(env(titlebar-area-height, 28px) + 12px)' }}>
+      <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between" style={{ paddingTop: 'calc(env(titlebar-area-height, 28px) + 20px)' }}>
         <div className="flex items-center space-x-4">
           <h1 className="text-xl font-bold text-white">ClipForge</h1>
           <span className="text-sm text-gray-400">v1.0.0</span>

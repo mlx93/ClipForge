@@ -54,15 +54,16 @@
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "fluent-ffmpeg": "^2.1.2",
-    "fabric": "^5.3.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "zustand": "^4.4.7",
+    "@types/fabric": "^5.3.10",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
+    "fabric": "^5.5.2",
+    "fluent-ffmpeg": "^2.1.2",
     "lucide-react": "^0.303.0",
-    "tailwind-merge": "^2.2.0"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwind-merge": "^2.2.0",
+    "zustand": "^4.4.7"
   },
   "build": {
     "appId": "com.clipforge.app",
@@ -79,7 +80,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "assets/icon.icns"
