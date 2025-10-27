@@ -144,28 +144,34 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips }) => {
             
             {/* Actions */}
             <div className="flex items-center space-x-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Add to timeline
-                  addClips([clip]);
-                }}
-                className="text-gray-400 hover:text-blue-400 transition-colors p-1"
-                title="Add to timeline"
-              >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Add to timeline with unique ID
+                          const timelineClip = {
+                            ...clip,
+                            id: `${clip.id}_timeline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                          };
+                          console.log('Adding clip to timeline:', timelineClip);
+                          addClips([timelineClip]);
+                        }}
+                        className="text-gray-400 hover:text-blue-400 transition-colors p-1"
+                        title="Add to timeline"
+                      >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
               </button>
               
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeClip(clip.id);
-                }}
-                className="text-gray-400 hover:text-red-400 transition-colors p-1"
-                title="Remove clip"
-              >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('Removing clip:', clip.id, clip.name);
+                          removeClip(clip.id);
+                        }}
+                        className="text-gray-400 hover:text-red-400 transition-colors p-1"
+                        title="Remove clip"
+                      >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>

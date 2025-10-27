@@ -20,6 +20,29 @@ const Timeline: React.FC = () => {
   };
 
   // Use layoutEffect for DOM measurements and canvas operations
+  // Force re-render when playhead changes by including it in dependencies
+  useLayoutEffect(() => {
+    // Add resize observer to handle container size changes
+    if (!canvasRef.current) return;
+    
+    const resizeObserver = new ResizeObserver(() => {
+      if (fabricCanvasRef.current && canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        fabricCanvasRef.current.setDimensions({
+          width: rect.width,
+          height: rect.height,
+        });
+        fabricCanvasRef.current.renderAll();
+      }
+    });
+    
+    resizeObserver.observe(canvasRef.current);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   useLayoutEffect(() => {
     if (!canvasRef.current) return;
 
@@ -32,10 +55,17 @@ const Timeline: React.FC = () => {
 
       // Handle clicks - update Zustand state directly
       canvas.on('mouse:down', (event) => {
+        console.log('Canvas clicked!', { target: event.target, pointer: canvas.getPointer(event.e) });
         if (!event.target) {
           const pointer = canvas.getPointer(event.e);
-          const clickedTime = (pointer.x / canvas.width!) * totalDuration;
-          setPlayhead(Math.max(0, Math.min(clickedTime, totalDuration)));
+          // Get current totalDuration from store at click time
+          const currentTotalDuration = useTimelineStore.getState().totalDuration;
+          const clickedTime = (pointer.x / canvas.width!) * currentTotalDuration;
+          const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
+          console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
+          setPlayhead(newTime);
+        } else {
+          console.log('Clicked on object:', event.target);
         }
       });
 
@@ -45,28 +75,57 @@ const Timeline: React.FC = () => {
     const canvas = fabricCanvasRef.current;
     const rect = canvasRef.current.getBoundingClientRect();
     
-    canvas.setDimensions({
-      width: rect.width,
-      height: rect.height,
+    // Force canvas to use full width and height
+    const newWidth = rect.width;
+    const newHeight = rect.height;
+    
+    console.log('Setting canvas dimensions:', { 
+      newWidth, 
+      newHeight, 
+      rectWidth: rect.width, 
+      rectHeight: rect.height,
+      containerWidth: canvasRef.current.parentElement?.offsetWidth,
+      windowWidth: window.innerWidth
     });
+    
+    // Force canvas to use full available width
+    let finalWidth = newWidth;
+    if (newWidth < 800) {
+      console.warn('Canvas width too small, forcing full width');
+      // Get the actual available width by going up the DOM tree
+      const mainContainer = canvasRef.current.closest('.flex-1');
+      const availableWidth = mainContainer?.offsetWidth || window.innerWidth - 300; // Account for sidebar
+      console.log('Forcing width to:', availableWidth, 'from container:', mainContainer);
+      finalWidth = availableWidth;
+    }
+    
+    canvas.setDimensions({
+      width: finalWidth,
+      height: newHeight,
+    });
+    
+    // Ensure canvas fills the container
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
 
     // Clear and redraw - Zustand state drives the render
     canvas.clear();
     canvas.backgroundColor = '#1a1a1a';
 
-    // Draw time grid
-    if (clips.length > 0 && totalDuration > 0) {
-      let timeInterval = 5;
-      const minSpacing = 80;
-      const pixelsPerSecond = canvas.width! / totalDuration;
-      
-      if (timeInterval * pixelsPerSecond < minSpacing) {
-        timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
-      }
+      // Draw time grid
+      if (clips.length > 0 && totalDuration > 0) {
+        let timeInterval = 5;
+        const minSpacing = 80;
+        const pixelsPerSecond = canvas.width! / totalDuration;
+        
+        if (timeInterval * pixelsPerSecond < minSpacing) {
+          timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
+        }
 
-      for (let time = 0; time <= totalDuration; time += timeInterval) {
-        const x = (time / totalDuration) * canvas.width!;
-        if (x > canvas.width!) break;
+        console.log('Drawing timeline:', { canvasWidth: canvas.width, totalDuration, pixelsPerSecond });
+
+        for (let time = 0; time <= totalDuration; time += timeInterval) {
+          const x = (time / totalDuration) * canvas.width!;
+          if (x > canvas.width!) break;
 
         canvas.add(new fabric.Line([x, 0, x, canvas.height!], {
           stroke: '#333',
@@ -169,11 +228,13 @@ const Timeline: React.FC = () => {
     }
 
     canvas.renderAll();
-  }); // No dependencies - runs on every render, which is what we want for Zustand reactivity
+    
+    console.log('Canvas rendered - Playhead:', formatTime(playhead), 'Clips:', clips.length);
+  }, [playhead, clips, totalDuration, zoom]); // Re-run when these Zustand values change
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
+    <div className="h-full flex flex-col w-full">
+      <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between w-full">
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-400">
             Duration: {formatTime(totalDuration)}
@@ -205,8 +266,12 @@ const Timeline: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden">
-        <canvas ref={canvasRef} className="w-full h-full cursor-pointer" />
+      <div className="flex-1 relative overflow-hidden w-full">
+        <canvas 
+          ref={canvasRef} 
+          className="w-full h-full cursor-pointer" 
+          style={{ width: '100%', height: '100%' }}
+        />
       </div>
     </div>
   );

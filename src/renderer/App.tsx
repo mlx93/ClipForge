@@ -124,14 +124,14 @@ const App: React.FC = () => {
         </div>
 
         {/* Center Panel - Timeline and Preview */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col" style={{ width: '100%', minWidth: 0 }}>
           {/* Video Preview - Larger space */}
           <div className="flex-1 bg-black border-b border-gray-700 flex items-center justify-center min-h-[400px]">
             <VideoPreview />
           </div>
 
-          {/* Timeline - Smaller space */}
-          <div className="h-64 timeline-container">
+          {/* Timeline - Fixed height to ensure full width */}
+          <div className="h-80 timeline-container" style={{ width: '100%', minWidth: '100%', flex: '0 0 auto' }}>
             <Timeline />
           </div>
         </div>

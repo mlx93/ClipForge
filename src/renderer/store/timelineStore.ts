@@ -30,12 +30,15 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
 
   // Actions
   addClips: (newClips: Clip[]) => {
+    console.log('Timeline store: Adding clips:', newClips);
     set((state) => {
       const updatedClips = [...state.clips, ...newClips];
       const totalDuration = updatedClips.reduce((sum, clip) => {
         const duration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
         return sum + duration;
       }, 0);
+      
+      console.log('Timeline store: Updated clips:', updatedClips.length, 'Total duration:', totalDuration);
       
       return {
         clips: updatedClips,
