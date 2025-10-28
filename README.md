@@ -120,42 +120,126 @@ ClipForge saves your editing sessions as `.clipforge` project files. These files
 
 ## Technical Stack
 
-- **Desktop**: Electron 28+
-- **Frontend**: React 18+ with TypeScript
-- **State**: Zustand
-- **Styling**: Tailwind CSS
-- **Video**: FFmpeg via fluent-ffmpeg
-- **Timeline**: Fabric.js canvas
-- **Build**: Vite + electron-builder
+### Core Technologies
+- **Desktop Framework**: Electron 28+ - Multi-process architecture for native macOS/Windows apps with web technologies
+- **Frontend**: React 18+ with TypeScript - Component-based UI with strict type safety
+- **State Management**: Zustand - Lightweight, performant state management with minimal boilerplate
+- **Styling**: Tailwind CSS - Utility-first CSS framework for rapid UI development
+- **Build Tool**: Vite - Fast HMR and optimized production builds with code splitting
+
+### Media Processing
+- **Video Processing**: FFmpeg via fluent-ffmpeg - Industry-standard video encoding and manipulation
+- **Video Player**: HTML5 `<video>` element - Native browser video playback with low overhead
+- **Timeline UI**: Fabric.js - HTML5 Canvas library for interactive, performant timeline rendering
+- **File Handling**: Electron IPC - Secure communication between main (Node.js) and renderer (React) processes
+
+### Key Design Decisions
+- **Stream-Based Processing**: Videos processed via FFmpeg streams, not loaded into memory (supports GB+ projects)
+- **File Path Storage**: Store references to video files on disk, not video data in state (memory efficient)
+- **Canvas Timeline**: Fabric.js provides 60fps interactions with dozens of clips without DOM overhead
+- **Type Safety**: Full TypeScript coverage with strict mode prevents runtime errors
 
 ## Architecture
 
+### Application Structure
+
 ```
-src/
-├── main/           # Electron main process
-│   ├── index.ts    # App entry point
-│   ├── ffmpeg.ts   # Video processing
-│   ├── fileSystem.ts # File operations
-│   └── ipc/        # IPC handlers
-├── renderer/       # React application
-│   ├── App.tsx     # Root component
-│   ├── components/ # UI components
-│   └── store/      # Zustand stores
-└── shared/         # Shared types/constants
+ClipForge/
+├── src/
+│   ├── main/                    # Electron Main Process (Node.js)
+│   │   ├── index.ts            # App lifecycle, window management
+│   │   ├── ffmpeg.ts           # Video encoding, export, trim operations
+│   │   ├── fileSystem.ts       # Video import, metadata extraction
+│   │   ├── ipc/handlers.ts     # IPC communication with renderer
+│   │   └── menu.ts             # Native application menu
+│   ├── renderer/                # Renderer Process (React/Browser)
+│   │   ├── App.tsx             # Root component, import handlers
+│   │   ├── components/
+│   │   │   ├── Timeline.tsx    # Fabric.js timeline editor
+│   │   │   ├── VideoPreview.tsx # HTML5 video player
+│   │   │   ├── MediaLibrary.tsx # Imported clips panel
+│   │   │   ├── ExportDialog.tsx # Export settings modal
+│   │   │   └── ProjectMenu.tsx  # Save/load UI
+│   │   ├── store/
+│   │   │   ├── timelineStore.ts # Timeline state (clips, playhead, zoom)
+│   │   │   ├── exportStore.ts   # Export progress, settings
+│   │   │   ├── projectStore.ts  # Project save/load state
+│   │   │   └── mediaLibraryStore.ts # Imported clips library
+│   │   └── utils/              # Shared utilities
+│   ├── preload/
+│   │   └── preload.ts          # Secure IPC bridge (contextBridge)
+│   └── shared/
+│       ├── types.ts            # Shared TypeScript interfaces
+│       └── constants.ts        # Shared constants, IPC channels
+├── docs/                        # Technical documentation
+├── memory-bank/                 # Project memory/context files
+└── release/                     # Built app packages (DMG, EXE)
 ```
+
+### Process Architecture
+
+**Main Process (Node.js)**
+- Manages application lifecycle and native window
+- Executes FFmpeg for video processing (encoding, trimming, metadata)
+- Handles file system operations (import, export, project save/load)
+- Communicates with renderer via IPC handlers
+- No direct DOM access (security boundary)
+
+**Renderer Process (React + Browser)**
+- Renders UI and handles user interactions
+- Manages application state via Zustand stores
+- Displays video preview (HTML5 `<video>` element)
+- Renders interactive timeline (Fabric.js canvas)
+- Communicates with main process via secure `electronAPI` bridge
+
+**Preload Script (Context Bridge)**
+- Exposes safe IPC methods to renderer via `contextBridge`
+- Prevents renderer from accessing Node.js APIs directly
+- Type-safe API: `window.electronAPI.importVideos()`, etc.
+
+### Data Flow
+
+1. **Import**: User drags video → Main validates/extracts metadata → Renderer updates Zustand state → Timeline re-renders
+2. **Edit**: User drags clip → Zustand state updates → Canvas re-renders via Fabric.js → Video preview syncs
+3. **Export**: User clicks export → Renderer calls IPC → Main invokes FFmpeg → Progress sent via IPC → UI updates
+
+### Memory Management
+
+- **File References**: Store video file paths, not actual video data (supports GB+ projects on 8GB RAM systems)
+- **Stream Processing**: FFmpeg processes videos as streams, not loading entire files into memory
+- **Canvas Optimization**: Fabric.js renders only visible timeline region, not entire project
+- **Lazy Loading**: Video frames loaded on-demand by HTML5 `<video>` element
+
+For detailed technical documentation, see the [`docs/`](./docs/) folder ([Documentation Index](./docs/DOCUMENTATION_INDEX.md)).
 
 ## Development
 
-### Scripts
-- `npm run dev` - Start development server
+### Quick Start
+
+```bash
+# Clone and install
+git clone https://github.com/YOUR_USERNAME/ClipForge.git
+cd ClipForge
+npm install
+
+# Start development
+npm run dev
+```
+
+### Build Scripts
+- `npm run dev` - Start development server with HMR
 - `npm run build` - Build for production
-- `npm run dist:mac` - Package for macOS
-- `npm run dist:win` - Package for Windows
+- `npm run dist:mac` - Package for macOS (DMG)
+- `npm run dist:win` - Package for Windows (EXE)
+- `npm run dist` - Package for all platforms
 
 ### Requirements
 - Node.js 18+
-- FFmpeg (system installation or bundled)
-- macOS (primary), Windows (supported)
+- FFmpeg (bundled automatically via @ffmpeg-installer)
+- macOS 10.15+ (for building macOS apps)
+- Windows 10+ (for building Windows apps)
+
+**For detailed build instructions, packaging, and troubleshooting, see [BUILD.md](./BUILD.md).**
 
 ## License
 
@@ -170,11 +254,34 @@ MIT License - see LICENSE file for details.
 
 ## Roadmap
 
-- [ ] Screen recording (desktopCapturer API)
-- [ ] Advanced timeline features (multi-track, PiP)
-- [ ] Project save/load
-- [ ] Undo/redo functionality
-- [ ] AI-powered features (subtitles, etc.)
+### ✅ MVP Complete (v1.0.0)
+- ✅ Video import (drag & drop, file picker)
+- ✅ Timeline editing with Fabric.js
+- ✅ Trim and split functionality
+- ✅ Multi-clip export with FFmpeg
+- ✅ Project save/load (.clipforge files)
+- ✅ Native macOS packaging (DMG)
+
+### 🚀 Planned Features (Post-MVP)
+- [ ] **Phase 2 Polish**:
+  - [ ] Real thumbnail generation (FFmpeg-based)
+  - [ ] Visual trim indicators (show trimmed regions)
+  - [ ] Enhanced timeline zoom
+  - [ ] Media library improvements
+
+- [ ] **PRD-2 Features**:
+  - [ ] Screen recording (desktopCapturer API)
+  - [ ] Webcam recording
+  - [ ] Advanced timeline (multi-track, PiP)
+  - [ ] Transitions and effects
+  - [ ] Undo/redo functionality
+
+- [ ] **PRD-3 Features**:
+  - [ ] AI-powered subtitles
+  - [ ] Auto-captions with OpenAI/Whisper
+  - [ ] Timeline text overlays
+
+See [PRD-2-Full-Features.md](./PRD-2-Full-Features.md) and [PRD-3-AI-Captions.md](./PRD-3-AI-Captions.md) for detailed specifications.
 
 ---
 
