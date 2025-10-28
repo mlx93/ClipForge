@@ -1,6 +1,15 @@
 # Project Progress
 
-## Recent Achievements (Last 3 Commits)
+## Recent Achievements (Last 4 Commits)
+
+### Text Zoom Independence Fix ✅
+- **Problem**: Time numbers and video clip titles were scaling with zoom, becoming unreadable
+- **Solution**: Applied inverse zoom transform to all text elements
+- **Technical Changes**:
+  - Set `zoomX: 1/zoom` and `zoomY: 1/zoom` for all text objects
+  - Affects time grid labels, clip titles, and clip duration text
+  - Text maintains consistent size regardless of zoom level
+- **Impact**: Timeline text remains readable and crisp at all zoom levels
 
 ### Timeline & Trim Fixes (d719fc8) ✅
 - **Problem**: Critical timeline and trim functionality regressions after zoom implementation
@@ -137,6 +146,7 @@
 - ✅ Project save/load functionality
 - ✅ Application menu with keyboard shortcuts
 - ✅ Export preview with settings
+- ✅ Text zoom independence (time numbers and clip titles stay readable)
 
 ## What Doesn't Work - ALL RESOLVED ✅
 - ✅ Timeline click-to-seek - FIXED

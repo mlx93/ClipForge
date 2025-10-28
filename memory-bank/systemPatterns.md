@@ -3,7 +3,13 @@
 ## Architecture Overview
 ClipForge follows Electron's multi-process architecture with clear separation between main (Node.js) and renderer (React) processes.
 
-## Recent Architecture Improvements (Last 3 Commits)
+## Recent Architecture Improvements (Last 4 Commits)
+
+### Text Rendering Architecture ✅
+- **Zoom Independence**: Text elements use inverse zoom transform
+- **Pattern**: `zoomX: 1/zoom, zoomY: 1/zoom` for all text objects
+- **Benefits**: Text remains readable at all zoom levels
+- **Implementation**: Applied to time grid labels, clip titles, duration text
 
 ### Bundle Architecture (b0df0b3)
 - **Code Splitting**: Manual chunks for vendor libraries and features
@@ -17,6 +23,8 @@ ClipForge follows Electron's multi-process architecture with clear separation be
 - **Suspense Boundaries**: Graceful loading states for lazy components
 - **Viewport Transform**: Zoom implemented via Fabric.js viewport (not coordinate multiplication)
 - **Memory Management**: Stream-based video processing, file paths over data storage
+- **Drag State Management**: `isDraggingRef` prevents canvas re-renders during trim operations
+- **Text Zoom Independence**: Inverse transform keeps text readable at all zoom levels
 
 ## Process Architecture
 ```

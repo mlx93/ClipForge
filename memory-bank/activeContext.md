@@ -3,7 +3,12 @@
 ## Current Work Focus
 **Priority**: All critical timeline and trim issues resolved ✅
 
-## Recent Changes (Last 3 Commits)
+## Recent Changes (Last 4 Commits)
+
+### Commit 1166f23 - Memory Bank Documentation Update ✅
+- **Purpose**: Updated memory bank to reflect all recent timeline and trim fixes
+- **Changes**: Comprehensive documentation of all completed fixes and improvements
+- **Impact**: Memory bank now accurately reflects current project state
 
 ### Commit d719fc8 - Timeline & Trim Functionality Fixes ✅
 - **Problem**: Critical timeline and trim regressions after zoom implementation
@@ -79,6 +84,14 @@
 - Clear flag to `false` on `object:modified` event (drag end)
 - Implemented video pause during drag, resume after drag completes
 
+### 6. Text Zoom Independence - FIXED ✅
+**Problem**: Time numbers and video clip titles were scaling with zoom, becoming unreadable
+**Solution**:
+- Applied inverse zoom transform to all text elements
+- Set `zoomX: 1/zoom` and `zoomY: 1/zoom` for text objects
+- Text now maintains consistent size regardless of zoom level
+- Affects: time grid labels, clip titles, clip duration text
+
 ## Next Steps
 
 ### Testing Required - ALL PASSED ✅
@@ -115,6 +128,7 @@
 13. ✅ Trim handle dragging works smoothly without canvas re-render interruption
 14. ✅ Trim values update correctly during drag operations
 15. ✅ Apply Trim uses actual trim values, not fallback values
+16. ✅ Text elements (time numbers, clip titles) remain readable at all zoom levels
 
 ## Technical Achievements
 
