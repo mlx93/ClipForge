@@ -23,7 +23,7 @@ const FORMAT_OPTIONS = [
 
 const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
   const { clips } = useTimelineStore();
-  const { isExporting, progress, error, startExport, resetExport } = useExportStore();
+  const { isExporting, progress, error, estimatedTimeRemaining, startExport, resetExport } = useExportStore();
   const [settings, setSettings] = useState<ExportSettings>({
     outputPath: '',
     resolution: RESOLUTION_OPTIONS[1], // Default to 720p
@@ -41,6 +41,22 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
     if (!settings.outputPath) {
       alert('Please select an output path');
       return;
+    }
+
+    // Check if file exists
+    const fileCheck = await window.electronAPI.checkFileExists(settings.outputPath);
+    
+    if (fileCheck.exists) {
+      const fileName = settings.outputPath.split('/').pop() || 'file';
+      const confirmed = confirm(
+        `A file named "${fileName}" already exists at this location.\n\n` +
+        `Do you want to replace it with the new export?\n\n` +
+        `Choosing "OK" will overwrite the existing file.`
+      );
+      
+      if (!confirmed) {
+        return; // User cancelled
+      }
     }
 
     try {
@@ -74,6 +90,15 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatEstimatedTime = (seconds: number | null): string => {
+    if (seconds === null || seconds === 0) return '';
+    if (seconds < 60) return `${Math.round(seconds)}s remaining`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    if (mins === 0) return `${secs}s remaining`;
+    return `${mins}m ${secs}s remaining`;
   };
 
   if (!isOpen) return null;
@@ -203,16 +228,33 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
             {/* Progress */}
             <div className="text-center">
               <div className="text-lg font-medium text-white mb-2">
-                {progress.currentStep}
+                Exporting Video...
               </div>
-              <div className="w-full bg-gray-700 rounded-full h-3 mb-2">
+              
+              {/* Progress Bar */}
+              <div className="w-full bg-gray-700 rounded-full h-4 mb-3 overflow-hidden">
                 <div
-                  className="bg-blue-600 h-3 rounded-full transition-all duration-300"
-                  style={{ width: `${progress.progress}%` }}
-                />
+                  className="bg-gradient-to-r from-blue-500 to-blue-600 h-4 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
+                  style={{ width: `${progress}%` }}
+                >
+                  {progress > 10 && (
+                    <span className="text-xs font-bold text-white">
+                      {progress}%
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="text-sm text-gray-400">
-                {progress.progress}%
+              
+              {/* Progress Details */}
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-300">
+                  {progress}% complete
+                </span>
+                {estimatedTimeRemaining !== null && estimatedTimeRemaining > 0 && (
+                  <span className="text-blue-400 font-medium">
+                    {formatEstimatedTime(estimatedTimeRemaining)}
+                  </span>
+                )}
               </div>
             </div>
 

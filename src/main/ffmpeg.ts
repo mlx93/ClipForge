@@ -29,6 +29,16 @@ export const exportTimeline = async (
       mkdir(outputDir, { recursive: true }).catch(reject);
     }
 
+    // Calculate total duration for progress tracking
+    const totalDuration = clips.reduce((sum, clip) => {
+      if (clip.trimEnd > 0) {
+        return sum + (clip.trimEnd - clip.trimStart);
+      }
+      return sum + clip.duration;
+    }, 0);
+    
+    console.log('[FFmpeg Export] Total duration:', totalDuration, 'seconds');
+
     // Build FFmpeg command
     let command = ffmpeg();
 
@@ -107,10 +117,39 @@ export const exportTimeline = async (
 
     // Progress tracking
     command.on('progress', (progress) => {
-      const percent = Math.round(progress.percent || 0);
+      // FFmpeg doesn't always report percent correctly with complex filters
+      // Calculate it manually from timemark and total duration
+      let percent = 0;
+      
+      if (progress.timemark && totalDuration > 0) {
+        // Parse timemark (format: "00:00:10.50")
+        const timemarkParts = progress.timemark.split(':');
+        if (timemarkParts.length >= 3) {
+          const hours = parseFloat(timemarkParts[0]);
+          const minutes = parseFloat(timemarkParts[1]);
+          const seconds = parseFloat(timemarkParts[2]);
+          const currentTime = hours * 3600 + minutes * 60 + seconds;
+          percent = Math.min(99, Math.round((currentTime / totalDuration) * 100));
+        }
+      } else if (progress.percent) {
+        // Fallback to FFmpeg's percent if available
+        percent = Math.round(progress.percent);
+      }
+      
+      console.log('[FFmpeg Progress] timemark:', progress.timemark, 'calculated:', percent + '%');
+      
       onProgress({
         progress: percent,
         currentStep: `Encoding video... ${percent}%`
+      });
+    });
+
+    // Start event
+    command.on('start', (commandLine) => {
+      console.log('[FFmpeg] Started export');
+      onProgress({
+        progress: 1,
+        currentStep: 'Starting FFmpeg...'
       });
     });
 

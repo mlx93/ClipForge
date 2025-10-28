@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteFile: (filePath: string): Promise<{ success: boolean; error?: string }> => 
     ipcRenderer.invoke('delete-file', filePath),
 
+  // Check if file exists
+  checkFileExists: (filePath: string): Promise<{ exists: boolean }> => 
+    ipcRenderer.invoke('check-file-exists', filePath),
+
   // Project operations
   saveProject: (project: Project): Promise<{ success: boolean; error?: string }> => 
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_PROJECT, { project }),
@@ -79,6 +83,7 @@ declare global {
       getVideoMetadata: (filePath: string) => Promise<{ success: boolean; metadata?: VideoMetadata; error?: string }>;
       trimVideo: (inputPath: string, outputPath: string, trimStart: number, trimEnd: number) => Promise<{ success: boolean; outputPath?: string; error?: string }>;
       deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+      checkFileExists: (filePath: string) => Promise<{ exists: boolean }>;
       saveProject: (project: Project) => Promise<{ success: boolean; error?: string }>;
       loadProject: (filePath: string) => Promise<{ success: boolean; project?: Project; error?: string }>;
       showSaveDialog: (options: any) => Promise<{ canceled: boolean; filePath?: string }>;

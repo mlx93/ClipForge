@@ -104,6 +104,17 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
     }
   });
 
+  // Check if file exists handler
+  ipcMain.handle('check-file-exists', async (_, filePath: string) => {
+    try {
+      const fs = await import('fs/promises');
+      await fs.access(filePath);
+      return { exists: true };
+    } catch (error) {
+      return { exists: false };
+    }
+  });
+
   // Show save dialog handler
   ipcMain.handle(IPC_CHANNELS.SHOW_SAVE_DIALOG, async (_, options: any) => {
     try {

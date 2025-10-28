@@ -64,6 +64,8 @@ export interface ExportState {
   currentStep: string;
   error: string | null;
   outputPath: string | null;
+  estimatedTimeRemaining: number | null; // seconds
+  exportStartTime: number | null; // timestamp
 }
 
 // IPC Communication Types

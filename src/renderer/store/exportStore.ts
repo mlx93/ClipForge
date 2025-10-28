@@ -17,7 +17,7 @@ interface ExportStore extends ExportState {
   showExportDialog: boolean;
 }
 
-export const useExportStore = create<ExportStore>((set) => ({
+export const useExportStore = create<ExportStore>((set, get) => ({
   // Initial state
   isExporting: false,
   progress: 0,
@@ -25,30 +25,49 @@ export const useExportStore = create<ExportStore>((set) => ({
   error: null,
   outputPath: null,
   showExportDialog: false,
+  estimatedTimeRemaining: null,
+  exportStartTime: null,
 
   // Actions
   startExport: async (clips: Clip[], settings: ExportSettings) => {
     // Prevent concurrent exports
-    const currentState = useExportStore.getState();
+    const currentState = get();
     if (currentState.isExporting) {
       toast.error('Export already in progress. Please wait for it to complete.');
       return;
     }
     
+    const startTime = Date.now();
     set({
       isExporting: true,
       progress: 0,
       currentStep: 'Preparing export...',
       error: null,
-      outputPath: null
+      outputPath: null,
+      exportStartTime: startTime,
+      estimatedTimeRemaining: null
     });
 
     try {
       // Set up progress listener for IPC events
-      const handleProgress = (_: any, progress: { progress: number; currentStep: string }) => {
+      const handleProgress = (progress: { progress: number; currentStep: string }) => {
+        const currentProgress = Math.round(progress.progress);
+        
+        console.log('[Renderer] Received progress update:', currentProgress + '%'); // Debug log
+        
+        // Calculate estimated time remaining
+        let estimatedTimeRemaining = null;
+        if (currentProgress > 5) { // Only estimate after 5% to get more accurate data
+          const elapsedTime = (Date.now() - startTime) / 1000; // seconds
+          const progressDecimal = currentProgress / 100;
+          const totalEstimatedTime = elapsedTime / progressDecimal;
+          estimatedTimeRemaining = Math.max(0, totalEstimatedTime - elapsedTime);
+        }
+        
         set({
-          progress: Math.round(progress.progress),
-          currentStep: progress.currentStep
+          progress: currentProgress,
+          currentStep: progress.currentStep,
+          estimatedTimeRemaining
         });
       };
 
@@ -75,10 +94,24 @@ export const useExportStore = create<ExportStore>((set) => ({
         progress: 100,
         currentStep: 'Export complete!',
         error: null,
-        outputPath
+        outputPath,
+        estimatedTimeRemaining: 0
       });
       
       toast.success(`Export complete! Saved to ${outputPath.split('/').pop()}`);
+      
+      // Close dialog immediately when export completes
+      set({ showExportDialog: false });
+      
+      // Reset export state after a short delay
+      setTimeout(() => {
+        set({
+          progress: 0,
+          currentStep: '',
+          exportStartTime: null,
+          estimatedTimeRemaining: null
+        });
+      }, 500);
     } catch (error) {
       console.error('Export error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Export failed';
@@ -88,7 +121,9 @@ export const useExportStore = create<ExportStore>((set) => ({
         progress: 0,
         currentStep: '',
         error: errorMessage,
-        outputPath: null
+        outputPath: null,
+        estimatedTimeRemaining: null,
+        exportStartTime: null
       });
       
       toast.error(errorMessage);
@@ -138,7 +173,9 @@ export const useExportStore = create<ExportStore>((set) => ({
       progress: 0,
       currentStep: '',
       error: null,
-      outputPath: null
+      outputPath: null,
+      estimatedTimeRemaining: null,
+      exportStartTime: null
     });
   },
 
