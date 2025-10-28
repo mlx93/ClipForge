@@ -51,6 +51,9 @@ export const exportTimeline = async (
     });
 
     // Configure output
+    // Detect format based on output path extension
+    const outputFormat = settings.outputPath.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
+    
     command
       .outputOptions([
         '-c:v libx264',
@@ -58,9 +61,10 @@ export const exportTimeline = async (
         `-crf ${FFMPEG_CRF}`,
         '-c:a aac',
         `-b:a ${FFMPEG_AUDIO_BITRATE}`,
-        '-movflags +faststart', // Optimize for streaming
+        '-movflags +faststart', // Optimize for streaming (works for both MP4 and MOV)
         '-pix_fmt yuv420p' // Ensure compatibility
       ])
+      .format(outputFormat)
       .output(settings.outputPath);
 
     // Apply resolution scaling if needed (skip for Source resolution)

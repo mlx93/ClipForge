@@ -52,7 +52,74 @@ Sanitize file paths before passing to FFmpeg. Wrap paths in quotes. Test with sp
 ### 13. Installation README Section (30 min)
 Add "Installation" section to README with macOS Gatekeeper bypass instructions. Include screenshots showing warning and how to right-click → Open.
 
-**Phase 1 Checkpoint:** Test thoroughly, commit to git, verify no regressions before proceeding to Phase 2.
+**Phase 1 Checkpoint:** Test thoroughly, commit to git, verify no regressions before proceeding to Phase 1.5.
+
+---
+
+## Phase 1.5: Critical Bug Fixes (Post-User Testing)
+
+**Priority:** MUST complete - fixes critical bugs found during user testing  
+**Estimated Time:** 4-5 hours  
+**Risk Level:** MEDIUM - Core functionality fixes, architectural changes required
+
+### 1. Fix Export Dialog Button Handlers (30 min)
+**Problem:** Browse, Preview, and Start Export buttons unresponsive in ExportDialog.tsx.  
+**Root Cause:** Line 97 uses `window.electron.invoke` instead of `window.electronAPI`.  
+**Solution:** Update all IPC calls to use the correct preload API (`window.electronAPI.invoke`).
+
+### 2. Implement Project Save/Load Functionality (2-3 hours)
+**Problem:** Saving creates `.clipforge` files, but macOS can't open them. LoadProject IPC handler may not be working.  
+
+**Option A (Preferred):** Fix `.clipforge` project files
+- Verify `saveProject` IPC handler writes JSON correctly
+- Fix `loadProject` IPC handler to parse and restore project state
+- Test opening `.clipforge` files within ClipForge app
+- Document that `.clipforge` files must be opened via File → Open in ClipForge
+
+**Option B (Fallback if Option A >2 hours):** Make Save = Export
+- "Save" and "Save As" export timeline as MP4 (same as Export button)
+- "Open" imports MP4 as single editable clip
+- Simplifies implementation, no custom file format
+- User can split/trim/edit the opened MP4
+
+**Decision:** Start with Option A. If not working after 2 hours, switch to Option B.
+
+### 3. Fix Video Player Global Time Sync (2 hours) 🔴 CRITICAL UX
+**Problem:** Video player shows individual clip times (resets to 0 for each clip) instead of continuous timeline. Playhead out of sync.  
+**Current Behavior:** Clip 1 shows 0:00-0:15, then Clip 2 shows 0:00-0:10 (confusing).  
+**Desired Behavior:** Timeline shows 0:00-0:25 continuously, video player syncs.  
+
+**Solution:**
+- In `VideoPreview.tsx`, calculate global time offset for current clip
+- Add `clipStartTime` to `video.currentTime` to get global timeline position
+- When playhead crosses clip boundary, switch video source seamlessly
+- Update video progress bar to reflect global timeline position (not individual clip time)
+
+**Implementation Steps:**
+- Calculate each clip's start time on global timeline (sum of previous clip durations)
+- When playhead is at global time T, find which clip contains T
+- Set video source to that clip's path
+- Set `video.currentTime = T - clipStartTime`
+- Display global time in video player UI
+
+### 4. Export Browse Button Default to Desktop (15 min)
+**Problem:** Export file picker doesn't default to Desktop folder.  
+**Solution:** In ExportDialog.tsx line 99, change `defaultPath` from `'clipforge-export.mp4'` to `'~/Desktop/clipforge-export.mp4'`.
+
+### 5. Remove Preview Button from Export Dialog (10 min)
+**Rationale:** Preview feature not in PRD-1 or PRD-2. Video player already provides live preview during editing.  
+**Solution:** Remove Preview button and `showPreview` state from ExportDialog.tsx. Simplify modal to Settings → Export workflow.
+
+### 6. Add MOV Export Format Option (30 min)
+**Current:** Only MP4 supported.  
+**Required:** Default to MP4, but allow macOS users to select MOV.  
+**Solution:**
+- ExportDialog.tsx: Update file picker filters to include both MP4 and MOV
+- Extract file extension from `settings.outputPath`
+- Pass format to FFmpeg based on extension
+- In ffmpeg.ts: Support both `.mp4` (format: 'mp4', codec: 'libx264') and `.mov` (format: 'mov', codec: 'libx264')
+
+**Phase 1.5 Checkpoint:** Test Export Dialog, Project Save/Load, Video Player sync. Commit before Phase 2.
 
 ---
 
@@ -172,10 +239,11 @@ Add Tab (next clip) and Shift+Tab (previous clip) shortcuts. Cycle through timel
 ---
 
 **Total Estimated Time:**
-- Phase 1: 5-6 hours
+- Phase 1: 5-6 hours ✅ COMPLETE
+- Phase 1.5: 4-5 hours 🔄 IN PROGRESS
 - Phase 2: 5-6 hours  
 - Phase 3: 3-4 hours
-- **Grand Total: 13-16 hours**
+- **Grand Total: 17-21 hours**
 
 ---
 

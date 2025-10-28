@@ -3,30 +3,48 @@ import { useTimelineStore } from '../store/timelineStore';
 
 const VideoPreview: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { clips, playhead, selectedClipId } = useTimelineStore();
+  const { clips, playhead, selectedClipId, totalDuration } = useTimelineStore();
   const [isPlaying, setIsPlaying] = React.useState(false);
-  const [currentTime, setCurrentTime] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
   const [hasError, setHasError] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState('');
 
-  // Get the current clip based on playhead position
-  const getCurrentClip = () => {
+  // Get the current clip based on playhead position and its start time
+  const getCurrentClipInfo = () => {
     if (clips.length === 0) return null;
     
     let currentTime = 0;
     for (const clip of clips) {
       const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
       if (playhead >= currentTime && playhead < currentTime + clipDuration) {
-        return clip;
+        return {
+          clip,
+          clipStartTime: currentTime,
+          clipDuration
+        };
       }
       currentTime += clipDuration;
     }
     
-    return clips[0]; // Fallback to first clip
+    // Fallback to last clip if playhead is at the end
+    if (clips.length > 0) {
+      let totalTime = 0;
+      for (let i = 0; i < clips.length - 1; i++) {
+        const clip = clips[i];
+        totalTime += clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
+      }
+      const lastClip = clips[clips.length - 1];
+      return {
+        clip: lastClip,
+        clipStartTime: totalTime,
+        clipDuration: lastClip.trimEnd > 0 ? lastClip.trimEnd - lastClip.trimStart : lastClip.duration - lastClip.trimStart
+      };
+    }
+    
+    return null;
   };
 
-  const currentClip = getCurrentClip();
+  const currentClipInfo = getCurrentClipInfo();
+  const currentClip = currentClipInfo?.clip || null;
 
   // Update video source when clip changes
   useEffect(() => {
@@ -44,22 +62,14 @@ const VideoPreview: React.FC = () => {
   // Sync video time with timeline playhead
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !currentClip) return;
+    if (!video || !currentClip || !currentClipInfo) return;
 
-    // Calculate the time within the current clip
-    let clipStartTime = 0;
-    for (const clip of clips) {
-      if (clip.id === currentClip.id) break;
-      const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
-      clipStartTime += clipDuration;
-    }
-
-    const timeInClip = playhead - clipStartTime;
+    const timeInClip = playhead - currentClipInfo.clipStartTime;
     const videoTime = currentClip.trimStart + timeInClip;
     
     console.log('Syncing video to timeline:', {
       playhead,
-      clipStartTime,
+      clipStartTime: currentClipInfo.clipStartTime,
       timeInClip,
       videoTime,
       currentVideoTime: video.currentTime,
@@ -71,29 +81,21 @@ const VideoPreview: React.FC = () => {
     if (Math.abs(video.currentTime - videoTime) > 0.05 && video.paused) {
       video.currentTime = videoTime;
     }
-  }, [playhead, currentClip, clips]);
+  }, [playhead, currentClip, currentClipInfo]);
 
   // Sync timeline playhead when video is playing
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !currentClip || !isPlaying) return;
+    if (!video || !currentClip || !currentClipInfo || !isPlaying) return;
 
     const interval = setInterval(() => {
       if (video.paused) return;
 
-      // Calculate the current timeline time based on video currentTime
-      let clipStartTime = 0;
-      for (const clip of clips) {
-        if (clip.id === currentClip.id) break;
-        const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
-        clipStartTime += clipDuration;
-      }
-
-      const timelineTime = clipStartTime + (video.currentTime - currentClip.trimStart);
+      const timelineTime = currentClipInfo.clipStartTime + (video.currentTime - currentClip.trimStart);
       
       console.log('Syncing timeline to video:', {
         videoCurrentTime: video.currentTime,
-        clipStartTime,
+        clipStartTime: currentClipInfo.clipStartTime,
         timelineTime,
         currentPlayhead: playhead
       });
@@ -105,23 +107,9 @@ const VideoPreview: React.FC = () => {
     }, 100); // Update every 100ms for smooth playback
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentClip, clips, playhead]);
+  }, [isPlaying, currentClip, currentClipInfo, playhead]);
 
   // Handle video events
-  const handleLoadedMetadata = () => {
-    const video = videoRef.current;
-    if (video) {
-      setDuration(video.duration);
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    const video = videoRef.current;
-    if (video) {
-      setCurrentTime(video.currentTime);
-    }
-  };
-
   const handlePlay = () => {
     setIsPlaying(true);
   };
@@ -189,24 +177,15 @@ const VideoPreview: React.FC = () => {
   };
 
   const handleProgressClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    const video = videoRef.current;
-    if (!video || !currentClip) return;
+    if (!currentClip) return;
 
     const rect = event.currentTarget.getBoundingClientRect();
     const clickX = event.clientX - rect.left;
     const percentage = clickX / rect.width;
-    const newVideoTime = percentage * duration;
-
-    // Calculate the corresponding timeline time
-    let clipStartTime = 0;
-    for (const clip of clips) {
-      if (clip.id === currentClip.id) break;
-      const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
-      clipStartTime += clipDuration;
-    }
-
-    const timelineTime = clipStartTime + (newVideoTime - currentClip.trimStart);
-    useTimelineStore.getState().setPlayhead(timelineTime);
+    
+    // Calculate the new global timeline position
+    const newTimelineTime = percentage * totalDuration;
+    useTimelineStore.getState().setPlayhead(newTimelineTime);
   };
 
   const formatTime = (seconds: number): string => {
@@ -253,8 +232,6 @@ const VideoPreview: React.FC = () => {
         <video
           ref={videoRef}
           className="max-w-full max-h-full"
-          onLoadedMetadata={handleLoadedMetadata}
-          onTimeUpdate={handleTimeUpdate}
           onPlay={handlePlay}
           onPause={handlePause}
           onError={handleError}
@@ -282,21 +259,21 @@ const VideoPreview: React.FC = () => {
             )}
           </button>
 
-          {/* Time display */}
+          {/* Time display - Shows global timeline position */}
           <div className="flex items-center space-x-2 text-sm text-gray-400">
-            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(playhead)}</span>
             <span>/</span>
-            <span>{formatTime(duration)}</span>
+            <span>{formatTime(totalDuration)}</span>
           </div>
 
-          {/* Progress bar */}
+          {/* Progress bar - Represents entire timeline */}
           <div 
             className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer relative"
             onClick={handleProgressClick}
           >
             <div 
               className="bg-blue-500 h-2 rounded-full transition-all duration-100"
-              style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+              style={{ width: `${totalDuration > 0 ? (playhead / totalDuration) * 100 : 0}%` }}
             />
           </div>
 

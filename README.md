@@ -80,6 +80,8 @@ Download the latest release from [GitHub Releases](https://github.com/mlx93/Clip
 
 ## Usage
 
+### Basic Workflow
+
 1. **Import Videos**: Drag video files into the app or click "Import Videos"
 2. **Arrange Timeline**: Drag clips from media library to timeline
 3. **Edit Clips**: 
@@ -87,7 +89,34 @@ Download the latest release from [GitHub Releases](https://github.com/mlx93/Clip
    - Drag red trim handles to adjust in/out points
    - Press 'S' or click "Split" to split at playhead
 4. **Preview**: Use play/pause controls or click timeline to seek
-5. **Export**: Click "Export" button, choose settings, and export to MP4
+5. **Export**: Click "Export" button, choose settings, and export to MP4/MOV
+
+### Project Files (`.clipforge`)
+
+ClipForge saves your editing sessions as `.clipforge` project files. These files store:
+- All imported clips and their timeline positions
+- Trim points and edits for each clip
+- Playhead position and zoom level
+- Project settings
+
+**Important:** `.clipforge` files can only be opened within ClipForge:
+
+1. **Saving a Project:**
+   - Click **"Save"** or **"Save As"** in the top menu
+   - Choose a location and filename
+   - The file will be saved with a `.clipforge` extension
+
+2. **Opening a Project:**
+   - **DO NOT** double-click the `.clipforge` file in Finder (macOS will show an error)
+   - Instead, launch **ClipForge** first
+   - Click **"Open"** in the top menu
+   - Navigate to your `.clipforge` file and select it
+   - Your project will load with all clips and edits restored
+
+**Why can't I double-click `.clipforge` files?**  
+`.clipforge` is a custom file format that macOS doesn't recognize. You must open these files from within the ClipForge application using File → Open.
+
+**Alternative:** If you want to save your edited video as a standard video file (MP4/MOV) that can be played anywhere, use the **"Export"** button instead of "Save".
 
 ## Technical Stack
 

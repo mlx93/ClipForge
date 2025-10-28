@@ -16,6 +16,11 @@ const RESOLUTION_OPTIONS = [
   { name: '4K', width: 3840, height: 2160 },
 ];
 
+const FORMAT_OPTIONS = [
+  { name: 'MP4', extension: 'mp4', description: 'MP4 Video (Universal)' },
+  { name: 'MOV', extension: 'mov', description: 'MOV Video (Apple)' },
+];
+
 const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
   const { clips } = useTimelineStore();
   const { isExporting, progress, error, startExport, resetExport } = useExportStore();
@@ -23,61 +28,14 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
     outputPath: '',
     resolution: RESOLUTION_OPTIONS[1], // Default to 720p
   });
-  const [previewThumbnail, setPreviewThumbnail] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState(FORMAT_OPTIONS[0]); // Default to MP4
 
   // Generate preview thumbnail when settings change
   useEffect(() => {
-    if (clips.length > 0 && settings.outputPath) {
-      generatePreviewThumbnail();
+    if (clips.length > 0) {
+      // Placeholder for any future preview logic if needed
     }
-  }, [clips, settings.resolution, settings.outputPath]);
-
-  const generatePreviewThumbnail = async () => {
-    try {
-      // Get the first frame of the first clip as preview
-      const firstClip = clips[0];
-      if (firstClip && firstClip.thumbnailPath) {
-        setPreviewThumbnail(firstClip.thumbnailPath);
-      } else {
-        // Generate a simple preview using canvas
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        // Set canvas size based on resolution
-        const width = settings.resolution.width || 1280;
-        const height = settings.resolution.height || 720;
-        canvas.width = Math.min(width, 320); // Limit preview size
-        canvas.height = Math.min(height, 180);
-
-        // Draw a simple preview
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        ctx.fillStyle = '#3b82f6';
-        ctx.fillRect(10, 10, canvas.width - 20, canvas.height - 20);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Preview', canvas.width / 2, canvas.height / 2);
-        ctx.fillText(`${width}x${height}`, canvas.width / 2, canvas.height / 2 + 20);
-
-        setPreviewThumbnail(canvas.toDataURL());
-      }
-    } catch (error) {
-      console.error('Failed to generate preview:', error);
-    }
-  };
-
-  const handlePreview = () => {
-    if (!settings.outputPath) {
-      alert('Please select an output path first');
-      return;
-    }
-    setShowPreview(true);
-  };
+  }, [clips]);
 
   const handleExport = async () => {
     if (!settings.outputPath) {
@@ -94,11 +52,12 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
 
   const handleFileSelect = async () => {
     try {
-      const result = await window.electron.invoke(IPC_CHANNELS.SHOW_SAVE_DIALOG, {
+      const defaultFileName = `clipforge-export.${selectedFormat.extension}`;
+      const result = await window.electronAPI.showSaveDialog({
         title: 'Export Video',
-        defaultPath: 'clipforge-export.mp4',
+        defaultPath: `~/Desktop/${defaultFileName}`,
         filters: [
-          { name: 'MP4 Video', extensions: ['mp4'] },
+          { name: selectedFormat.description, extensions: [selectedFormat.extension] },
           { name: 'All Files', extensions: ['*'] }
         ]
       });
@@ -137,16 +96,14 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
 
         {!isExporting ? (
           <div className="space-y-4">
-            {!showPreview ? (
-              <>
-                {/* Project Info */}
-                <div className="bg-gray-700 rounded p-3">
-                  <h3 className="text-sm font-medium text-gray-300 mb-2">Project Info</h3>
-                  <div className="text-sm text-gray-400 space-y-1">
-                    <div>Clips: {clips.length}</div>
-                    <div>Duration: {formatTime(useTimelineStore.getState().totalDuration)}</div>
-                  </div>
-                </div>
+            {/* Project Info */}
+            <div className="bg-gray-700 rounded p-3">
+              <h3 className="text-sm font-medium text-gray-300 mb-2">Project Info</h3>
+              <div className="text-sm text-gray-400 space-y-1">
+                <div>Clips: {clips.length}</div>
+                <div>Duration: {formatTime(useTimelineStore.getState().totalDuration)}</div>
+              </div>
+            </div>
 
             {/* Output Path */}
             <div>
@@ -168,6 +125,37 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
                   Browse
                 </button>
               </div>
+            </div>
+
+            {/* Format Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Format
+              </label>
+              <select
+                value={selectedFormat.name}
+                onChange={(e) => {
+                  const selected = FORMAT_OPTIONS.find(opt => opt.name === e.target.value);
+                  if (selected) {
+                    setSelectedFormat(selected);
+                    // Update output path extension if one is already selected
+                    if (settings.outputPath) {
+                      const pathWithoutExt = settings.outputPath.replace(/\.(mp4|mov)$/i, '');
+                      setSettings(prev => ({ 
+                        ...prev, 
+                        outputPath: `${pathWithoutExt}.${selected.extension}` 
+                      }));
+                    }
+                  }
+                }}
+                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              >
+                {FORMAT_OPTIONS.map(option => (
+                  <option key={option.name} value={option.name}>
+                    {option.description}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Resolution */}
@@ -193,97 +181,22 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
               </select>
             </div>
 
-                {/* Export Buttons */}
-                <div className="flex space-x-3 pt-4">
-                  <button
-                    onClick={handlePreview}
-                    disabled={!settings.outputPath || clips.length === 0}
-                    className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Preview
-                  </button>
-                  <button
-                    onClick={handleExport}
-                    disabled={!settings.outputPath || clips.length === 0}
-                    className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Start Export
-                  </button>
-                  <button
-                    onClick={onClose}
-                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* Preview Section */
-              <div className="space-y-4">
-                <div className="bg-gray-700 rounded p-4">
-                  <h3 className="text-lg font-medium text-white mb-3">Export Preview</h3>
-                  
-                  {/* Thumbnail Preview */}
-                  <div className="mb-4">
-                    <div className="text-sm text-gray-300 mb-2">Preview:</div>
-                    <div className="bg-gray-800 rounded border border-gray-600 p-2 flex justify-center">
-                      {previewThumbnail ? (
-                        <img 
-                          src={previewThumbnail} 
-                          alt="Export Preview" 
-                          className="max-w-full max-h-48 rounded"
-                        />
-                      ) : (
-                        <div className="w-48 h-32 bg-gray-600 rounded flex items-center justify-center text-gray-400">
-                          Generating preview...
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Settings Summary */}
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Resolution:</span>
-                      <span className="text-white">
-                        {settings.resolution.name} 
-                        {settings.resolution.width > 0 && ` (${settings.resolution.width}x${settings.resolution.height})`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Duration:</span>
-                      <span className="text-white">{formatTime(useTimelineStore.getState().totalDuration)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Clips:</span>
-                      <span className="text-white">{clips.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Output:</span>
-                      <span className="text-white text-xs truncate max-w-48" title={settings.outputPath}>
-                        {settings.outputPath.split('/').pop()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Preview Actions */}
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => setShowPreview(false)}
-                    className="flex-1 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors"
-                  >
-                    Back to Settings
-                  </button>
-                  <button
-                    onClick={handleExport}
-                    className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors"
-                  >
-                    Start Export
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Export Buttons */}
+            <div className="flex space-x-3 pt-4">
+              <button
+                onClick={handleExport}
+                disabled={!settings.outputPath || clips.length === 0}
+                className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Start Export
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
