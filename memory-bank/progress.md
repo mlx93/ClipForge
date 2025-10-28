@@ -1,6 +1,26 @@
 # Project Progress
 
-## Recent Achievements (Last 4 Commits)
+## Recent Achievements (Last 5 Commits)
+
+### Trim Handle Drag Fix (59ddc39) ✅ - CRITICAL
+- **Problem**: Trim handles stuck during drag - could not move them
+- **Root Cause Analysis**:
+  - `handleWidth` variable undefined in event handler scope (referenced before declaration)
+  - Stale closure capturing initial state values in event handlers
+  - Main canvas rendering effect had NO skip check for drag operations
+  - Canvas re-rendered on state changes, destroying trim handles mid-drag
+- **Technical Solutions**:
+  - Moved `handleWidth` declaration to top of useLayoutEffect (line 295)
+  - Refactored ALL event handlers to fetch fresh state: `useTimelineStore.getState()`
+  - Added `isDraggingRef` skip check to main rendering effect (prevents re-render during drag)
+  - Functional setState pattern: `setTempTrimEnd((prev) => prev === null ? defaultValue : prev)`
+  - TypeScript fix: Cast Line objects to `any` for x1/x2 properties
+  - Progress tracking: Added `isApplyingTrim`, `trimProgress` state
+  - IPC listener for FFmpeg trim progress updates
+  - Unique output filenames: `${basePath}_trimmed_${timestamp}.${extension}`
+  - Better error handling with user-friendly alerts
+  - Visual progress bar in timeline header during processing
+- **Impact**: Trim functionality completely operational - smooth drag, accurate state updates, successful video trimming
 
 ### Text Zoom Independence Fix ✅
 - **Problem**: Time numbers and video clip titles were scaling with zoom, becoming unreadable
@@ -112,8 +132,20 @@
 - ✅ Playhead doesn't follow trim handles - FIXED
 - ✅ Timeline width regression - FIXED
 - ✅ Zoom coordinate system broken - FIXED
-- ✅ Canvas re-rendering interrupting drag - FIXED
-- ✅ Trim values not updating - FIXED
+- ✅ Canvas re-rendering interrupting drag - FIXED (added to main effect)
+- ✅ Trim values not updating - FIXED (fresh state from store)
+- ✅ Trim handles stuck during drag - FIXED (skip logic in correct effect)
+
+## Next Polish Tasks
+
+### Timeline UI Improvements (In Progress)
+1. Video play button should not reset trim settings
+2. Remove "Trimming: [clipname]" text from header
+3. Make Apply Trim/Cancel buttons smaller
+4. Rename "Split at Playhead" to "Split"
+5. Fix clip colors: selected = light blue, unselected = dark blue (currently reversed)
+6. Display full clip titles within clips (fix truncation)
+7. Show full titles in media library import panel with hover tooltips
 
 ## Known Issues
 

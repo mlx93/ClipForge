@@ -1,9 +1,27 @@
 # Active Context
 
 ## Current Work Focus
-**Priority**: All critical timeline and trim issues resolved ✅
+**Priority**: Timeline UI Polish & Refinements 🎨
 
-## Recent Changes (Last 4 Commits)
+## Recent Changes (Last 5 Commits)
+
+### Commit 59ddc39 - Timeline Trim Drag Fix (Critical) ✅
+- **Problem**: Trim handles could not be dragged - they immediately got stuck
+- **Root Cause**: `isDraggingRef` skip logic was only in resize observer effect, not main rendering effect
+- **Issues Fixed**:
+  - Missing `handleWidth` variable declaration in event handler scope
+  - Stale closure problem - event handlers capturing old state values
+  - Main canvas re-render effect destroying trim handles during drag
+  - TypeScript errors with Fabric.js Line properties
+- **Solutions**:
+  - Moved `handleWidth` to top of useLayoutEffect scope
+  - All event handlers now fetch fresh state via `useTimelineStore.getState()`
+  - Added isDraggingRef skip check to MAIN rendering effect (line 286-290)
+  - Used functional setState pattern for trim value initialization
+  - Cast Line objects to `any` when setting x1/x2 properties
+  - Enhanced Apply Trim with progress tracking, error handling, unique file naming
+  - Added visual progress bar and IPC progress listener
+- **Impact**: Trim functionality now fully operational - handles drag smoothly, state updates correctly, video shortens accurately
 
 ### Commit 1166f23 - Memory Bank Documentation Update ✅
 - **Purpose**: Updated memory bank to reflect all recent timeline and trim fixes
@@ -92,7 +110,20 @@
 - Text now maintains consistent size regardless of zoom level
 - Affects: time grid labels, clip titles, clip duration text
 
-## Next Steps
+## Upcoming UI Polish Tasks 🎨
+
+### Timeline Header Improvements
+1. **Video Play Button**: Should not reset trim settings when playing video
+2. **Header Text**: Remove "Trimming: [clipname]" text, keep reorder icons and Split button
+3. **Button Sizing**: Make Apply Trim and Cancel buttons smaller for sleeker header
+4. **Rename Button**: Change "Split at Playhead" to "Split"
+
+### Clip Visual Improvements
+5. **Clip Colors**: Reverse colors - selected clips should be light blue, unselected dark blue
+6. **Clip Titles**: Wrap/display full titles within clips (fix truncation issues)
+
+### Media Library Improvements  
+7. **Title Display**: Show full titles in left import panel, add hover tooltip for full text
 
 ### Testing Required - ALL PASSED ✅
 1. ✅ Test complete workflow: import video → click timeline → select clip → drag trim handles → verify Apply button
@@ -143,8 +174,11 @@
 
 ### Code Quality Improvements
 - Added comprehensive debugging logs for trim operations
-- Improved error handling and validation
-- Enhanced user feedback with console warnings
-- Better state management for trim workflow
-- Cleaner coordinate calculation logic
+- Improved error handling and validation with user-friendly alerts
+- Enhanced user feedback with progress bars and detailed confirmations
+- Better state management for trim workflow using functional setState
+- Cleaner coordinate calculation logic with fresh state from store
+- Fixed stale closure anti-pattern across all event handlers
+- Added skip logic to prevent canvas re-render interruptions during drag
+- Timestamp-based file naming to prevent trim output overwrites
 
