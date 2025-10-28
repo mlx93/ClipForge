@@ -168,7 +168,16 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
             
             {/* Clip info */}
             <div className="flex-1 min-w-0">
-              <h3 className="font-medium text-white truncate" title={clip.name}>
+              <h3 
+                className="font-medium text-white text-sm leading-tight break-words"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  wordBreak: 'break-word'
+                }}
+              >
                 {clip.name}
               </h3>
               <div className="text-sm text-gray-400 space-y-1">

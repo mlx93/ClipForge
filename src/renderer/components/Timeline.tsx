@@ -328,38 +328,57 @@ const Timeline: React.FC = () => {
           console.log('Clicked on object:', event.target);
           const target = event.target as any;
           if (target.clipId && !target.isTrimHandle) {
-            setSelectedClip(target.clipId);
             // Start trim mode when clicking on a clip
             setIsTrimming(true);
-            // Initialize trim values for the selected clip - get fresh state
-            const currentClips = useTimelineStore.getState().clips;
-            const clip = currentClips.find(c => c.id === target.clipId);
-            if (clip) {
-              setTempTrimStart(clip.trimStart);
-              setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
-              console.log('Initialized trim values on clip click:', { 
-                tempTrimStart: clip.trimStart, 
-                tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
-              });
+            
+            // Only reset trim values if selecting a DIFFERENT clip
+            const currentState = useTimelineStore.getState();
+            const wasAlreadySelected = currentState.selectedClipId === target.clipId;
+            
+            setSelectedClip(target.clipId);
+            
+            if (!wasAlreadySelected) {
+              // New clip selected - initialize trim values
+              const currentClips = currentState.clips;
+              const clip = currentClips.find(c => c.id === target.clipId);
+              if (clip) {
+                setTempTrimStart(clip.trimStart);
+                setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+                console.log('Initialized trim values for newly selected clip:', { 
+                  tempTrimStart: clip.trimStart, 
+                  tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
+                });
+              }
+            } else {
+              console.log('Same clip clicked - preserving existing trim values');
             }
             console.log('Selected clip and started trim mode:', target.clipId);
           } else if (target.isTrimHandle) {
-            // Clicking on trim handle should start trim mode
-            const currentClips = useTimelineStore.getState().clips;
-            const clip = currentClips.find(c => c.id === target.clipId);
-            if (clip) {
-              setSelectedClip(target.clipId);
-              setIsTrimming(true);
-              // Initialize trim values for the selected clip
-              setTempTrimStart(clip.trimStart);
-              setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
-              console.log('Initialized trim values on trim handle click:', { 
-                tempTrimStart: clip.trimStart, 
-                tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
-              });
-              console.log('Started trim mode for clip:', target.clipId);
-              console.log('⚠️ DRAG the trim handles to adjust trim start/end. Clicking alone does not change trim values.');
+            // Clicking on trim handle - just ensure trim mode is on
+            // Don't reset values, they should already be set from dragging or clip selection
+            const currentState = useTimelineStore.getState();
+            const wasAlreadySelected = currentState.selectedClipId === target.clipId;
+            
+            setSelectedClip(target.clipId);
+            setIsTrimming(true);
+            
+            if (!wasAlreadySelected) {
+              // Trim handle on a different clip - initialize values
+              const currentClips = currentState.clips;
+              const clip = currentClips.find(c => c.id === target.clipId);
+              if (clip) {
+                setTempTrimStart(clip.trimStart);
+                setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+                console.log('Initialized trim values for newly selected trim handle:', { 
+                  tempTrimStart: clip.trimStart, 
+                  tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
+                });
+              }
+            } else {
+              console.log('Trim handle clicked on same clip - preserving existing trim values');
             }
+            console.log('Started trim mode for clip:', target.clipId);
+            console.log('⚠️ DRAG the trim handles to adjust trim start/end. Clicking alone does not change trim values.');
           }
         }
       });
@@ -535,7 +554,7 @@ const Timeline: React.FC = () => {
             // Lighten clip color on hover
             if (target.type === 'rect' && !target.isTrimHandle) {
               const currentSelectedId = useTimelineStore.getState().selectedClipId;
-              target.set('fill', currentSelectedId === target.clipId ? '#2563eb' : '#60a5fa');
+              target.set('fill', currentSelectedId === target.clipId ? '#93c5fd' : '#60a5fa');
               canvas.renderAll();
             }
           }
@@ -547,7 +566,7 @@ const Timeline: React.FC = () => {
         if (target && target.clipId && target.type === 'rect' && !target.isTrimHandle) {
           // Restore original clip color
           const currentSelectedId = useTimelineStore.getState().selectedClipId;
-          target.set('fill', currentSelectedId === target.clipId ? '#1e40af' : '#3b82f6');
+          target.set('fill', currentSelectedId === target.clipId ? '#60a5fa' : '#3b82f6');
           canvas.renderAll();
         }
         canvas.setCursor('default');
@@ -652,8 +671,8 @@ const Timeline: React.FC = () => {
           top: clipY,
           width: clipWidth,
           height: clipHeight,
-          fill: selectedClipId === clip.id ? '#1e40af' : '#3b82f6',
-          stroke: selectedClipId === clip.id ? '#1d4ed8' : '#1e40af',
+          fill: selectedClipId === clip.id ? '#60a5fa' : '#3b82f6',
+          stroke: selectedClipId === clip.id ? '#3b82f6' : '#2563eb',
           strokeWidth: selectedClipId === clip.id ? 3 : 2,
           selectable: false, // Disable dragging for now to avoid overlap issues
           lockMovementY: true,
@@ -666,9 +685,14 @@ const Timeline: React.FC = () => {
         
         canvas.add(clipRect);
 
-        // Calculate trim handle positions based on current trim values
-        const currentTrimStart = clip.trimStart;
-        const currentTrimEnd = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
+        // Calculate trim handle positions based on temp trim values (if in trim mode) or clip values
+        // This ensures trim handles stay in place when video is playing
+        const currentTrimStart = (selectedClipId === clip.id && tempTrimStart !== null) 
+          ? tempTrimStart 
+          : clip.trimStart;
+        const currentTrimEnd = (selectedClipId === clip.id && tempTrimEnd !== null) 
+          ? tempTrimEnd 
+          : (clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
         const trimStartX = clipX + (currentTrimStart / clip.duration) * clipWidth;
         const trimEndX = clipX + (currentTrimEnd / clip.duration) * clipWidth;
 
@@ -719,11 +743,13 @@ const Timeline: React.FC = () => {
           canvas.add(rightHandle);
         }
 
-        // Clip text
-        canvas.add(new fabric.Text(clip.name, {
+        // Clip text - use Textbox for wrapping
+        const maxTextWidth = (clipWidth - 16) * zoom; // Account for padding and zoom
+        canvas.add(new fabric.Textbox(clip.name, {
           left: clipX + 8,
-          top: clipY + 10,
-          fontSize: 14,
+          top: clipY + 8,
+          width: maxTextWidth,
+          fontSize: 13,
           fill: '#ffffff',
           fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
           selectable: false,
@@ -731,6 +757,7 @@ const Timeline: React.FC = () => {
           clipId: clip.id,
           zoomX: 1 / zoom,
           zoomY: 1 / zoom,
+          splitByGrapheme: true, // Better text wrapping
         } as any));
 
         // Duration text
@@ -792,7 +819,7 @@ const Timeline: React.FC = () => {
     canvas.renderAll();
     
     console.log('Canvas rendered - Playhead:', formatTime(playhead), 'Clips:', clips.length);
-  }, [clips, totalDuration, zoom, selectedClipId, playhead]); // Re-run when clips, selection, or playhead changes
+  }, [clips, totalDuration, zoom, selectedClipId, playhead, tempTrimStart, tempTrimEnd]); // Re-run when clips, selection, playhead, or trim values change
 
 
   return (
@@ -811,6 +838,43 @@ const Timeline: React.FC = () => {
         </div>
         
                 <div className="flex items-center space-x-2">
+                  {isTrimming && (
+                    <>
+                      {isApplyingTrim ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium">
+                            Processing... {trimProgress}%
+                          </div>
+                          <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-500 transition-all duration-300" 
+                              style={{ width: `${trimProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={applyTrim}
+                            disabled={tempTrimStart === null || tempTrimEnd === null}
+                            className="bg-green-700 hover:bg-green-800 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs font-medium"
+                            title="Apply trim - this will permanently trim the video"
+                          >
+                            ✓ Apply
+                          </button>
+                          <button
+                            onClick={cancelTrim}
+                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium"
+                            title="Cancel trim - discard changes"
+                          >
+                            ✕ Cancel
+                          </button>
+                        </>
+                      )}
+                      <div className="border-l border-gray-600 h-6 mx-2"></div>
+                    </>
+                  )}
+                  
                   <button
                     onClick={() => useTimelineStore.getState().setZoom(zoom * 0.8)}
                     className="text-gray-400 hover:text-white px-2 py-1 rounded"
@@ -834,46 +898,6 @@ const Timeline: React.FC = () => {
                       Click a clip to select it and show trim handles
                     </span>
                   )}
-
-                  {isTrimming && (
-                    <>
-                      <div className="border-l border-gray-600 h-6 mx-2"></div>
-                      <span className="text-sm text-yellow-400 font-medium">
-                        Trimming: {selectedClipId ? clips.find(c => c.id === selectedClipId)?.name : 'Unknown'}
-                      </span>
-                      {isApplyingTrim ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium">
-                            Processing... {trimProgress}%
-                          </div>
-                          <div className="w-32 h-2 bg-gray-700 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-blue-500 transition-all duration-300" 
-                              style={{ width: `${trimProgress}%` }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={applyTrim}
-                            disabled={tempTrimStart === null || tempTrimEnd === null}
-                            className="bg-green-700 hover:bg-green-800 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded text-sm font-medium shadow-md border border-green-600"
-                            title="Apply trim - this will permanently trim the video"
-                          >
-                            ✓ Apply Trim
-                          </button>
-                          <button
-                            onClick={cancelTrim}
-                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium shadow-lg border-2 border-red-500"
-                            title="Cancel trim - discard changes"
-                          >
-                            ✕ Cancel
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
                   
                   {/* Debug info */}
                   {process.env.NODE_ENV === 'development' && (
@@ -882,7 +906,7 @@ const Timeline: React.FC = () => {
                     </div>
                   )}
 
-                  {selectedClipId && !isTrimming && (
+                  {selectedClipId && (
                     <>
                       <div className="border-l border-gray-600 h-6 mx-2"></div>
                       <span className="text-xs text-gray-500 mr-2">Reorder:</span>
@@ -909,7 +933,7 @@ const Timeline: React.FC = () => {
                         className="text-gray-400 hover:text-red-400 px-3 py-1 rounded text-sm border border-gray-600 hover:border-red-400"
                         title="Split clip at playhead (S) - cuts the selected clip into two separate clips at the red playhead line"
                       >
-                        ✂️ Split at Playhead
+                        ✂️ Split
                       </button>
                     </>
                   )}
