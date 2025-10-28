@@ -1,14 +1,13 @@
 import { stat } from 'fs/promises';
 import { extname, basename } from 'path';
 import { promisify } from 'util';
-import * as ffmpegLib from 'fluent-ffmpeg';
-import * as ffmpegInstallerLib from '@ffmpeg-installer/ffmpeg';
+// Use require-style imports for CommonJS modules that export a callable function
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ffmpeg = require('fluent-ffmpeg');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 import { Clip, VideoMetadata } from '@shared/types';
 import { MAX_FILE_SIZE, ERROR_MESSAGES, SUPPORTED_VIDEO_EXTENSIONS } from '@shared/constants';
-
-// Handle CommonJS interop
-const ffmpeg: any = (ffmpegLib as any).default || ffmpegLib;
-const ffmpegInstaller: any = (ffmpegInstallerLib as any).default || ffmpegInstallerLib;
 
 // Set FFmpeg path
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);

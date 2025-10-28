@@ -1,9 +1,8 @@
-import * as ffmpegLib from 'fluent-ffmpeg';
-import * as ffmpegInstallerLib from '@ffmpeg-installer/ffmpeg';
-
-// Handle CommonJS interop
-const ffmpeg: any = (ffmpegLib as any).default || ffmpegLib;
-const ffmpegInstaller: any = (ffmpegInstallerLib as any).default || ffmpegInstallerLib;
+// Use require-style imports for CommonJS modules that export a callable function
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ffmpeg = require('fluent-ffmpeg');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 import { join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -30,14 +29,8 @@ export const exportTimeline = async (
       mkdir(outputDir, { recursive: true }).catch(reject);
     }
 
-    // Debug: Check ffmpeg availability
-    console.log('[FFmpeg Export] ffmpeg type:', typeof ffmpeg);
-    console.log('[FFmpeg Export] ffmpeg is function:', typeof ffmpeg === 'function');
-    
     // Build FFmpeg command
     let command = ffmpeg();
-    console.log('[FFmpeg Export] command type:', typeof command);
-    console.log('[FFmpeg Export] command.input type:', typeof command.input);
 
     // Add input files with trim points
     clips.forEach((clip, index) => {
@@ -63,6 +56,42 @@ export const exportTimeline = async (
     // Detect format based on output path extension
     const outputFormat = settings.outputPath.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
     
+    // Determine if we need scaling
+    const needsScaling = settings.resolution.name !== 'Source' && 
+                        settings.resolution.width > 0 && 
+                        settings.resolution.height > 0;
+    
+    const scaleFilter = needsScaling 
+      ? `scale=${settings.resolution.width}:${settings.resolution.height}:force_original_aspect_ratio=decrease,pad=${settings.resolution.width}:${settings.resolution.height}:(ow-iw)/2:(oh-ih)/2`
+      : null;
+
+    // Handle multiple clips by concatenating them
+    if (clips.length > 1) {
+      // Create a filter complex for concatenation and optional scaling
+      const filterInputs = clips.map((_, index) => `[${index}:v][${index}:a]`).join('');
+      const filterConcat = `concat=n=${clips.length}:v=1:a=1[v][a]`;
+      
+      // Build the complete filter chain
+      let filterChain = `${filterInputs}${filterConcat}`;
+      
+      // If scaling is needed, add it to the filter chain
+      if (scaleFilter) {
+        filterChain += `;[v]${scaleFilter}[outv]`;
+        command = command.complexFilter([filterChain]).outputOptions([
+          '-map [outv]',
+          '-map [a]'
+        ]);
+      } else {
+        command = command.complexFilter([filterChain]).outputOptions([
+          '-map [v]',
+          '-map [a]'
+        ]);
+      }
+    } else if (scaleFilter) {
+      // Single clip with scaling - can use videoFilters
+      command = command.videoFilters([scaleFilter]);
+    }
+    
     command
       .outputOptions([
         '-c:v libx264',
@@ -75,27 +104,6 @@ export const exportTimeline = async (
       ])
       .format(outputFormat)
       .output(settings.outputPath);
-
-    // Apply resolution scaling if needed (skip for Source resolution)
-    if (settings.resolution.name !== 'Source' && settings.resolution.width > 0 && settings.resolution.height > 0) {
-      command = command.videoFilters([
-        `scale=${settings.resolution.width}:${settings.resolution.height}:force_original_aspect_ratio=decrease,pad=${settings.resolution.width}:${settings.resolution.height}:(ow-iw)/2:(oh-ih)/2`
-      ]);
-    }
-
-    // Handle multiple clips by concatenating them
-    if (clips.length > 1) {
-      // Create a filter complex for concatenation
-      const filterInputs = clips.map((_, index) => `[${index}:v][${index}:a]`).join('');
-      const filterConcat = `concat=n=${clips.length}:v=1:a=1[outv][outa]`;
-      
-      command = command.complexFilter([
-        `${filterInputs}${filterConcat}`
-      ]).outputOptions([
-        '-map [outv]',
-        '-map [outa]'
-      ]);
-    }
 
     // Progress tracking
     command.on('progress', (progress) => {

@@ -1,6 +1,30 @@
 # Project Progress
 
-## Recent Achievements (Last 6 Commits)
+## Recent Achievements (Last 7 Commits)
+
+### FFmpeg Export Fix (October 2025) ✅ - CRITICAL BUG FIX
+- **Problem**: Export functionality failing with "TypeError: ffmpeg.input is not a function"
+- **Root Cause**: Vite's `_interopNamespaceDefault` helper was converting the fluent-ffmpeg function to a non-callable object
+- **Technical Analysis**:
+  - `fluent-ffmpeg` is a CommonJS module that exports a constructor function directly
+  - ESM `import` syntax with `esModuleInterop: true` triggered Vite's namespace wrapping
+  - The `_interopNamespaceDefault` function used `for...in` to copy properties
+  - This copied the function's properties but lost the callable nature
+  - Result: `ffmpeg` became an object with methods but wasn't itself callable
+- **Solution**: 
+  - Replaced ESM imports with direct `require()` calls in affected files
+  - Updated `src/main/ffmpeg.ts` and `src/main/fileSystem.ts`
+  - Bypassed Vite's interop helpers entirely
+- **Technical Details**:
+  ```typescript
+  // BEFORE (broken):
+  import ffmpeg from 'fluent-ffmpeg';
+  
+  // AFTER (working):
+  const ffmpeg = require('fluent-ffmpeg');
+  ```
+- **Impact**: Export functionality now works correctly, all video processing operations functional
+- **Documentation**: Created `FFMPEG_EXPORT_FIX.md` with comprehensive analysis and solution details
 
 ### Complete UI Polish & Trim Persistence (6a399e1) ✅ - ALL ISSUES RESOLVED
 - **Problem**: Multiple critical UX issues affecting trim workflow and overall polish
@@ -183,6 +207,7 @@
 3. ✅ **Visual Feedback**: Clips show as shorter after trim
 4. ✅ **Timeline Zoom**: Zoom functionality works correctly with viewport transform
 5. ✅ **Drag Operations**: Trim handles can be dragged smoothly without interruption
+6. ✅ **FFmpeg Export**: Export functionality working correctly after require() fix
 
 ### Medium Priority
 5. **Performance**: Canvas re-rendering optimized with drag state tracking
