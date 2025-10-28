@@ -60,7 +60,7 @@ app.whenReady().then(() => {
   setupIpcHandlers(mainWindow!);
   
   // Set up application menu
-  const menu = createApplicationMenu();
+  const menu = createApplicationMenu(mainWindow!);
   Menu.setApplicationMenu(menu);
 
   app.on('activate', () => {

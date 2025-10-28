@@ -7,6 +7,8 @@ const Timeline: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
   const isDraggingRef = useRef(false); // Track if user is dragging trim handles
+  const playheadLineRef = useRef<fabric.Line | null>(null); // Store playhead line for efficient updates
+  const playheadTriangleRef = useRef<fabric.Triangle | null>(null); // Store playhead triangle for efficient updates
 
   // Subscribe to Zustand store - this is the React way
   const clips = useTimelineStore(state => state.clips);
@@ -803,15 +805,18 @@ const Timeline: React.FC = () => {
       if (totalDuration > 0) {
         const x = (playhead / totalDuration) * (canvas.width! / zoom);
 
-        canvas.add(new fabric.Line([x, 0, x, canvas.height!], {
+        // Create and store playhead objects for efficient updates
+        const line = new fabric.Line([x, 0, x, canvas.height!], {
           stroke: '#ef4444',
           strokeWidth: 2,
           selectable: false,
           evented: false,
           playhead: true,
-        } as any));
+        } as any);
+        playheadLineRef.current = line;
+        canvas.add(line);
 
-        canvas.add(new fabric.Triangle({
+        const triangle = new fabric.Triangle({
           left: x - 6,
           top: 0,
           width: 12,
@@ -820,7 +825,9 @@ const Timeline: React.FC = () => {
           selectable: false,
           evented: false,
           playhead: true,
-        } as any));
+        } as any);
+        playheadTriangleRef.current = triangle;
+        canvas.add(triangle);
       }
     } else {
       // Empty state
@@ -841,12 +848,39 @@ const Timeline: React.FC = () => {
     canvas.renderAll();
     
     console.log('Canvas rendered - Playhead:', formatTime(playhead), 'Clips:', clips.length);
-  }, [clips, totalDuration, zoom, selectedClipId, playhead, tempTrimStart, tempTrimEnd]); // Re-run when clips, selection, playhead, or trim values change
+  }, [clips, totalDuration, zoom, selectedClipId, tempTrimStart, tempTrimEnd]); // REMOVED playhead from dependencies!
+
+  // OPTIMIZED EFFECT: Update ONLY playhead position without full canvas re-render
+  useLayoutEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || totalDuration === 0 || !playheadLineRef.current || !playheadTriangleRef.current) return;
+
+    // Calculate new x position
+    const x = (playhead / totalDuration) * (canvas.width! / zoom);
+
+    // Update line position (set new coordinates)
+    playheadLineRef.current.set({
+      x1: x,
+      y1: 0,
+      x2: x,
+      y2: canvas.height,
+    });
+
+    // Update triangle position
+    playheadTriangleRef.current.set({
+      left: x - 6,
+    });
+
+    // Only render the playhead objects, not the entire canvas
+    playheadLineRef.current.setCoords();
+    playheadTriangleRef.current.setCoords();
+    canvas.requestRenderAll();
+  }, [playhead, totalDuration, zoom]); // Only playhead changes trigger this lightweight update
 
 
   return (
     <div className="h-full flex flex-col w-full relative">
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between w-full absolute top-0 z-10" style={{ width: 'calc(100vw - 24rem)', left: '0' }}>
+      <div className="bg-gray-800 border-b border-gray-700 px-4 py-1 flex items-center justify-between w-full absolute top-0 z-10" style={{ width: 'calc(100vw - 24rem)', left: '0' }}>
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-400">
             Duration: {formatTime(totalDuration)}
@@ -962,11 +996,11 @@ const Timeline: React.FC = () => {
                 </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden w-full absolute bottom-0 flex items-center justify-center" style={{ width: 'calc(100vw - 24rem)', left: '0' }}>
+      <div className="flex-1 relative overflow-hidden w-full flex items-center justify-center" style={{ width: 'calc(100vw - 24rem)', left: '0', paddingTop: '36px' }}>
         <canvas 
           ref={canvasRef} 
           className="w-full cursor-pointer" 
-          style={{ width: '100%', height: '80%' }}
+          style={{ width: '100%', height: '100%' }}
         />
       </div>
     </div>

@@ -15,6 +15,8 @@ const VideoPreview: React.FC = () => {
   const videoReadyStateRef = useRef<'loading' | 'canplay' | 'error'>('loading');
   const pendingPlayRef = useRef<boolean>(false);
   const playbackAnimationFrameRef = useRef<number | null>(null);
+  const previousClipIdRef = useRef<string | null>(null); // Track previous clip to prevent duplicate loads
+  const handleEndedRef = useRef<(() => void) | null>(null); // Stable ref for handleEnded to avoid RAF loop restarts
   
   // Only subscribe to the state we actually need
   const { clips, playhead, totalDuration } = useTimelineStore();
@@ -22,21 +24,39 @@ const VideoPreview: React.FC = () => {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [hasError, setHasError] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState('');
-
+  
+  // Throttled playhead for UI display (prevents 60fps re-renders of controls)
+  const [displayPlayhead, setDisplayPlayhead] = React.useState(0);
+  
+  // Stable reference to current clip info to prevent RAF loop restarts
+  const currentClipInfoRef = useRef<ClipInfo | null>(null);
   // DERIVED STATE: Calculate during render, not in useEffect
   // This is pure computation from props/state - no need for useEffect
   const currentClipInfo = useMemo((): ClipInfo | null => {
-    if (clips.length === 0) return null;
+    if (clips.length === 0) {
+      currentClipInfoRef.current = null;
+      return null;
+    }
     
     let currentTime = 0;
     for (const clip of clips) {
       const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
       if (playhead >= currentTime && playhead < currentTime + clipDuration) {
-        return {
+        const newInfo = {
           clip,
           clipStartTime: currentTime,
           clipDuration
         };
+        
+        // Only return new object if clip actually changed
+        if (currentClipInfoRef.current?.clip.id !== clip.id) {
+          console.log('[Clip Info] Clip changed:', clip.name);
+          currentClipInfoRef.current = newInfo;
+          return newInfo;
+        }
+        
+        // Same clip - return existing reference to prevent RAF restart
+        return currentClipInfoRef.current;
       }
       currentTime += clipDuration;
     }
@@ -49,51 +69,106 @@ const VideoPreview: React.FC = () => {
         totalTime += clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
       }
       const lastClip = clips[clips.length - 1];
-      return {
+      const newInfo = {
         clip: lastClip,
         clipStartTime: totalTime,
         clipDuration: lastClip.trimEnd > 0 ? lastClip.trimEnd - lastClip.trimStart : lastClip.duration - lastClip.trimStart
       };
+      
+      // Only return new object if clip actually changed
+      if (currentClipInfoRef.current?.clip.id !== lastClip.id) {
+        console.log('[Clip Info] Clip changed to last clip:', lastClip.name);
+        currentClipInfoRef.current = newInfo;
+        return newInfo;
+      }
+      
+      // Same clip - return existing reference
+      return currentClipInfoRef.current;
     }
     
+    currentClipInfoRef.current = null;
     return null;
   }, [clips, playhead]); // Memoize to avoid recalculation on every render
 
   const currentClip = currentClipInfo?.clip || null;
 
+  // Stable currentClipName reference to prevent VideoControls re-renders
+  // Only changes when the actual clip ID changes, not on every render
+  const currentClipName = useMemo(() => {
+    return currentClip?.name || '';
+  }, [currentClip?.id]); // Only depend on clip ID, not the full clip object
+
   // EFFECT 1: Manage video source loading and clip transitions
+  // Depend on currentClipInfo (stable reference) not currentClip (unstable)
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !currentClip) return;
+    if (!video || !currentClipInfo) return;
+    
+    const clip = currentClipInfo.clip;
+
+    // Check if this is the same clip we just loaded (MUST check before logging)
+    if (previousClipIdRef.current === clip.id) {
+      // Same clip - no need to reload, just ensure we're ready
+      if (video.readyState >= 3) {
+        videoReadyStateRef.current = 'canplay';
+      }
+      return; // ✅ Return immediately - don't log, don't do anything
+    }
+    
+    // Only log and proceed if we're actually changing clips
+    console.log('[Video Source] Clip changed from', previousClipIdRef.current, 'to', clip.id, '-', clip.name);
+    
+    // Update tracking IMMEDIATELY after detecting change
+    previousClipIdRef.current = clip.id;
 
     // Reset error state when loading new video
     setHasError(false);
     setErrorMessage('');
     videoReadyStateRef.current = 'loading';
     
-    // Only update source if it's different
-    const newSrc = `file://${currentClip.path}`;
-    if (video.src !== newSrc) {
-      console.log('[Video Source] Loading new clip:', currentClip.name);
-      video.src = newSrc;
-      video.load();
-    } else {
-      // Same clip, already loaded
-      videoReadyStateRef.current = 'canplay';
-    }
-  }, [currentClip]);
+    // Update source
+    const newSrc = `file://${clip.path}`;
+    console.log('[Video Source] Loading new clip:', clip.name);
+    video.src = newSrc;
+    video.load();
+    
+    // CRITICAL: Immediately seek to the correct position after metadata loads
+    // This minimizes visible flicker by reducing the time the new clip shows its first frame
+    video.addEventListener('loadedmetadata', () => {
+      const currentPlayhead = useTimelineStore.getState().playhead;
+      const timeInClip = currentPlayhead - currentClipInfo.clipStartTime;
+      const targetTime = clip.trimStart + timeInClip;
+      
+      // Only seek if we're not at the start of the clip already
+      if (Math.abs(video.currentTime - targetTime) > 0.05) {
+        console.log('[Video Source] Metadata loaded, seeking to:', targetTime);
+        video.currentTime = targetTime;
+      }
+    }, { once: true });
+  }, [currentClipInfo]); // Only depend on stable currentClipInfo!
 
   // EFFECT 2: Sync video currentTime with timeline playhead (when paused or seeking)
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentClip || !currentClipInfo) return;
 
+    // Calculate the time in the current clip
     const timeInClip = playhead - currentClipInfo.clipStartTime;
+    
+    // Boundary check: ensure timeInClip is within valid range
+    if (timeInClip < 0 || timeInClip > currentClipInfo.clipDuration) {
+      console.log('[Playhead Sync] Time outside clip bounds, skipping:', {
+        timeInClip,
+        clipDuration: currentClipInfo.clipDuration
+      });
+      return;
+    }
+    
     const videoTime = currentClip.trimStart + timeInClip;
     
     // Only seek if:
     // 1. Video is paused (user is scrubbing timeline)
-    // 2. OR difference is significant (avoid micro-adjustments during playback)
+    // 2. AND difference is significant (avoid micro-adjustments during playback)
     const timeDiff = Math.abs(video.currentTime - videoTime);
     
     if (video.paused && timeDiff > 0.05) {
@@ -177,6 +252,11 @@ const VideoPreview: React.FC = () => {
     }
   }, [clips, currentClip, currentClipInfo, totalDuration]);
 
+  // Store handleEnded in ref so RAF effect doesn't need it as dependency
+  useEffect(() => {
+    handleEndedRef.current = handleEnded;
+  }, [handleEnded]);
+
   const handleError = useCallback(() => {
     console.error('[Video Error] Failed to load:', currentClip?.path);
     videoReadyStateRef.current = 'error';
@@ -209,53 +289,7 @@ const VideoPreview: React.FC = () => {
     }
   }, []);
 
-  // EFFECT 1: Manage video source loading and clip transitions
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !currentClip) return;
-
-    // Reset error state when loading new video
-    setHasError(false);
-    setErrorMessage('');
-    videoReadyStateRef.current = 'loading';
-    
-    // Only update source if it's different
-    const newSrc = `file://${currentClip.path}`;
-    if (video.src !== newSrc) {
-      console.log('[Video Source] Loading new clip:', currentClip.name);
-      video.src = newSrc;
-      video.load();
-    } else {
-      // Same clip, already loaded
-      videoReadyStateRef.current = 'canplay';
-    }
-  }, [currentClip]);
-
-  // EFFECT 2: Sync video currentTime with timeline playhead (when paused or seeking)
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !currentClip || !currentClipInfo) return;
-
-    const timeInClip = playhead - currentClipInfo.clipStartTime;
-    const videoTime = currentClip.trimStart + timeInClip;
-    
-    // Only seek if:
-    // 1. Video is paused (user is scrubbing timeline)
-    // 2. OR difference is significant (avoid micro-adjustments during playback)
-    const timeDiff = Math.abs(video.currentTime - videoTime);
-    
-    if (video.paused && timeDiff > 0.05) {
-      console.log('[Playhead Sync] Seeking video:', {
-        playhead,
-        videoTime,
-        currentVideoTime: video.currentTime,
-        difference: timeDiff
-      });
-      video.currentTime = videoTime;
-    }
-  }, [playhead, currentClip, currentClipInfo]);
-
-  // EFFECT 3: Sync timeline playhead with video during playback (using requestAnimationFrame for smoothness)
+  // EFFECT 2: Sync timeline playhead with video during playback (using requestAnimationFrame for smoothness)
   useEffect(() => {
     const video = videoRef.current;
     
@@ -282,18 +316,23 @@ const VideoPreview: React.FC = () => {
 
     // Use requestAnimationFrame for smooth 60fps updates instead of setInterval
     const syncPlayhead = () => {
-      if (!video || video.paused) {
-        console.log('[RAF Loop] Sync skipped - video paused or not available');
-        // Don't stop the loop, just skip this frame
+      // Get fresh state from refs to avoid stale closures
+      const clipInfo = currentClipInfoRef.current;
+      const clip = clipInfo?.clip;
+      
+      // If video is paused during clip transition, keep the loop alive but skip sync
+      // This prevents the playhead from freezing during video load
+      if (!video || video.paused || !clipInfo || !clip) {
+        // Still schedule next frame to keep loop alive
         playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
         return;
       }
 
-      const timelineTime = currentClipInfo.clipStartTime + (video.currentTime - currentClip.trimStart);
+      const timelineTime = clipInfo.clipStartTime + (video.currentTime - clip.trimStart);
       
       // Check if we've reached the end of the current clip
-      const clipEndTime = currentClipInfo.clipStartTime + currentClipInfo.clipDuration;
-      const clipEndVideoTime = currentClip.trimEnd > 0 ? currentClip.trimEnd : currentClip.duration;
+      const clipEndTime = clipInfo.clipStartTime + clipInfo.clipDuration;
+      const clipEndVideoTime = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
       
       if (timelineTime >= clipEndTime || video.currentTime >= clipEndVideoTime) {
         // We've reached the end of the current clip - trigger transition
@@ -304,9 +343,16 @@ const VideoPreview: React.FC = () => {
           clipEndVideoTime
         });
         
-        // Manually trigger the ended handler logic
-        handleEnded();
-        return; // Stop the sync loop, handleEnded will restart if needed
+        // Call handleEnded via ref to avoid making it a dependency
+        if (handleEndedRef.current) {
+          handleEndedRef.current();
+        }
+        
+        // DON'T return here - continue the RAF loop!
+        // During clip load, the video will be paused, but we want to keep the loop alive
+        // so the playhead continues updating once the new clip is ready
+        playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
+        return;
       }
       
       // Update timeline playhead to match video
@@ -327,7 +373,23 @@ const VideoPreview: React.FC = () => {
         playbackAnimationFrameRef.current = null;
       }
     };
-  }, [isPlaying, currentClip, currentClipInfo, handleEnded]);
+  }, [isPlaying]); // Only depend on isPlaying, not currentClip or currentClipInfo!
+
+  // EFFECT 4: Throttle playhead updates for UI display (reduce footer re-renders from 60fps to ~15fps)
+  useEffect(() => {
+    // Update display playhead at most 15 times per second (every ~67ms)
+    const throttleInterval = setInterval(() => {
+      setDisplayPlayhead(playhead);
+    }, 67);
+
+    return () => clearInterval(throttleInterval);
+  }, [playhead]);
+
+  // Helper function for relative seeking
+  const seekRelative = useCallback((seconds: number) => {
+    const newTime = Math.max(0, Math.min(playhead + seconds, totalDuration));
+    useTimelineStore.getState().setPlayhead(newTime);
+  }, [playhead, totalDuration]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -343,11 +405,23 @@ const VideoPreview: React.FC = () => {
           break;
         case 'ArrowLeft':
           event.preventDefault();
-          seekRelative(-5); // Seek back 5 seconds
+          if (event.shiftKey) {
+            // Shift + Left Arrow: Move back by 1 second (fine control)
+            seekRelative(-1);
+          } else {
+            // Left Arrow: Move back 5 seconds
+            seekRelative(-5);
+          }
           break;
         case 'ArrowRight':
           event.preventDefault();
-          seekRelative(5); // Seek forward 5 seconds
+          if (event.shiftKey) {
+            // Shift + Right Arrow: Move forward by 1 second (fine control)
+            seekRelative(1);
+          } else {
+            // Right Arrow: Move forward 5 seconds
+            seekRelative(5);
+          }
           break;
         case 'Home':
           event.preventDefault();
@@ -363,12 +437,7 @@ const VideoPreview: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [togglePlayPause]);
-
-  const seekRelative = useCallback((seconds: number) => {
-    const newTime = Math.max(0, Math.min(playhead + seconds, totalDuration));
-    useTimelineStore.getState().setPlayhead(newTime);
-  }, [playhead, totalDuration]);
+  }, [togglePlayPause, seekRelative]);
 
   const handleProgressClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!currentClip) return;
@@ -440,9 +509,9 @@ const VideoPreview: React.FC = () => {
       {/* Controls - Memoized to prevent re-render when video changes */}
       <VideoControls
         isPlaying={isPlaying}
-        playhead={playhead}
+        playhead={displayPlayhead}
         totalDuration={totalDuration}
-        currentClipName={currentClip?.name || ''}
+        currentClipName={currentClipName}
         onTogglePlayPause={togglePlayPause}
         onProgressClick={handleProgressClick}
         formatTime={formatTime}
@@ -462,7 +531,7 @@ const VideoControls = React.memo<{
   formatTime: (seconds: number) => string;
 }>(({ isPlaying, playhead, totalDuration, currentClipName, onTogglePlayPause, onProgressClick, formatTime }) => {
   return (
-    <div className="bg-gray-800 border-t border-gray-700 p-4">
+    <div className="bg-gray-800 border-t border-gray-700 p-2" style={{ minHeight: '56px' }}>
       <div className="flex items-center gap-4">
         {/* Play/Pause button - Fixed width */}
         <button

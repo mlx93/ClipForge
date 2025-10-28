@@ -1,6 +1,6 @@
-import { Menu, MenuItemConstructorOptions, app, shell } from 'electron';
+import { Menu, MenuItemConstructorOptions, app, shell, BrowserWindow } from 'electron';
 
-export const createApplicationMenu = (): Menu => {
+export const createApplicationMenu = (mainWindow: BrowserWindow): Menu => {
   const template: MenuItemConstructorOptions[] = [
     {
       label: 'ClipForge',
@@ -46,7 +46,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+N',
           click: () => {
             // Send event to renderer to create new project
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-new-project');
           }
         },
@@ -55,7 +54,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+O',
           click: () => {
             // Send event to renderer to open project
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-open-project');
           }
         },
@@ -64,7 +62,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+S',
           click: () => {
             // Send event to renderer to save project
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-save-project');
           }
         },
@@ -73,7 +70,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+Shift+S',
           click: () => {
             // Send event to renderer to save project as
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-save-project-as');
           }
         },
@@ -83,7 +79,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+I',
           click: () => {
             // Send event to renderer to import videos
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-import-videos');
           }
         },
@@ -93,7 +88,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+E',
           click: () => {
             // Send event to renderer to export video
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-export-video');
           }
         }
@@ -134,7 +128,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+A',
           click: () => {
             // Send event to renderer to select all clips
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-select-all');
           }
         }
@@ -148,7 +141,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Space',
           click: () => {
             // Send event to renderer to toggle play/pause
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-play-pause');
           }
         },
@@ -157,7 +149,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Escape',
           click: () => {
             // Send event to renderer to stop playback
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-stop');
           }
         },
@@ -167,7 +158,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Home',
           click: () => {
             // Send event to renderer to go to start
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-go-to-start');
           }
         },
@@ -176,7 +166,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'End',
           click: () => {
             // Send event to renderer to go to end
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-go-to-end');
           }
         },
@@ -185,7 +174,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Left',
           click: () => {
             // Send event to renderer to seek backward
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-seek-backward');
           }
         },
@@ -194,7 +182,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Right',
           click: () => {
             // Send event to renderer to seek forward
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-seek-forward');
           }
         },
@@ -204,7 +191,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'S',
           click: () => {
             // Send event to renderer to split clip
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-split-clip');
           }
         },
@@ -213,7 +199,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: '[',
           click: () => {
             // Send event to renderer to move clip left
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-move-clip-left');
           }
         },
@@ -222,7 +207,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: ']',
           click: () => {
             // Send event to renderer to move clip right
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-move-clip-right');
           }
         },
@@ -232,7 +216,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+Plus',
           click: () => {
             // Send event to renderer to zoom in
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-zoom-in');
           }
         },
@@ -241,7 +224,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+-',
           click: () => {
             // Send event to renderer to zoom out
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-zoom-out');
           }
         },
@@ -250,7 +232,6 @@ export const createApplicationMenu = (): Menu => {
           accelerator: 'Command+0',
           click: () => {
             // Send event to renderer to reset zoom
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-zoom-reset');
           }
         }
@@ -326,7 +307,6 @@ export const createApplicationMenu = (): Menu => {
           label: 'Keyboard Shortcuts',
           click: () => {
             // Send event to renderer to show shortcuts
-            const mainWindow = require('./index').getMainWindow();
             mainWindow?.webContents.send('menu-show-shortcuts');
           }
         }

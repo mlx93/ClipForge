@@ -219,13 +219,13 @@ const App: React.FC = () => {
 
         {/* Center Panel - Timeline and Preview */}
         <div className="flex-1 flex flex-col" style={{ width: '100%', minWidth: 0 }}>
-          {/* Video Preview - Larger space */}
-          <div className="flex-1 bg-black border-b border-gray-700 flex items-center justify-center min-h-[400px]">
+          {/* Video Preview - Larger space (increased from flex-1 to allow more room) */}
+          <div className="bg-black border-b border-gray-700 flex items-center justify-center" style={{ flex: '1 1 0', minHeight: '500px' }}>
             <VideoPreview />
           </div>
 
-          {/* Timeline - Fixed height to ensure full width */}
-          <div className="h-80 timeline-container" style={{ width: '100%', minWidth: '100%', flex: '0 0 auto' }}>
+          {/* Timeline - Reduced height and pushed to bottom */}
+          <div className="h-48 timeline-container" style={{ width: '100%', minWidth: '100%', flex: '0 0 auto' }}>
             <Timeline />
           </div>
         </div>

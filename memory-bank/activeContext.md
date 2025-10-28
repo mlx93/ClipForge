@@ -1,7 +1,71 @@
 # Active Context
 
 ## Current Work Focus
-**Priority**: Multi-Clip Video Playback ✅ - Seamless Professional Experience
+**Priority**: Post-PRD1 Polish Phases Complete ✅ - Ready for Phase 2
+
+## Phase 1 & 1.5 Completion Summary
+
+### Phase 1: Low-Risk Critical Fixes (5-6 hours) ✅ COMPLETE
+All 13 items from POST_PRD1_POLISH_SPEC.md Phase 1 completed:
+
+1. ✅ Delete Key Handler for Timeline Clips - Delete/Backspace removes selected clips
+2. ✅ Fix ExportSettings Type Definitions - Removed unused quality/format fields
+3. ✅ Video Load Error Handling - onError handler with user-friendly messages
+4. ✅ Fix Source Resolution Export - Skip scaling when "Source" selected
+5. ✅ Verify FFmpeg Bundling - Added extraFiles to electron-builder.json
+6. ✅ Replace Alerts with Toast Notifications - react-hot-toast integrated
+7. ✅ Clean Up Intermediate Trim Files - Automatic deletion of old trim files
+8. ✅ Export Progress Bar - Real-time progress in ExportDialog
+9. ✅ Improve Video Sync During Trim Drag - Reduced threshold to 0.05s
+10. ✅ Disk Full Error Handling - ENOSPC errors caught gracefully
+11. ✅ Prevent Concurrent Exports - Guard in exportStore
+12. ✅ File Path Edge Case Handling - Path sanitization for FFmpeg
+13. ✅ Installation README Section - macOS Gatekeeper bypass instructions
+
+**Files Modified in Phase 1**:
+- src/renderer/components/Timeline.tsx - Delete key handler, toast notifications, trim file cleanup
+- src/shared/types.ts - ExportSettings simplified, previousTrimPath added
+- src/renderer/components/VideoPreview.tsx - Error handling, sync threshold
+- src/main/ffmpeg.ts - Source resolution fix, disk full handling, path sanitization
+- electron-builder.json - FFmpeg binary bundling
+- src/renderer/App.tsx - Toaster component
+- src/preload/preload.ts - deleteFile IPC handler
+- src/main/ipc/handlers.ts - delete-file handler
+- README.md - macOS installation instructions
+
+### Phase 1.5: Critical Bug Fixes (4-5 hours) ✅ COMPLETE
+All 6 items from POST_PRD1_POLISH_SPEC.md Phase 1.5 completed:
+
+1. ✅ Fix Export Dialog Button Handlers - Corrected IPC calls to window.electronAPI
+2. ✅ Implement Project Save/Load Functionality - .clipforge files working
+3. ✅ Fix Video Player Global Time Sync - Continuous timeline display, seamless transitions
+4. ✅ Export Browse Button Default to Desktop - ~/Desktop/ default path
+5. ✅ Remove Preview Button from Export Dialog - Simplified export workflow
+6. ✅ Add MOV Export Format Option - MP4 (default) and MOV support
+
+**Files Modified in Phase 1.5**:
+- src/renderer/store/exportStore.ts - Fixed IPC calls, export logic
+- src/renderer/components/ExportDialog.tsx - Fixed IPC, Desktop default, MOV format, removed Preview
+- src/renderer/components/VideoPreview.tsx - Global time sync (refactored to 512 lines)
+- src/renderer/store/projectStore.ts - loadProject dirty flag fix
+- src/main/ffmpeg.ts - MOV format support
+- README.md - .clipforge file documentation
+
+### Additional Performance Improvements ✅
+- Console log cleanup in import pipeline (9 statements removed)
+- Faster imports with dev tools open (15-30% improvement expected)
+- Files cleaned: fileSystem.ts, ipc/handlers.ts, App.tsx, MediaLibrary.tsx
+
+### Phase 2 Status: READY TO START ⏳
+All prerequisites complete. Phase 2 tasks:
+1. Fix Timeline Zoom Implementation (2-3 hours) - HIGH RISK
+2. Generate Thumbnail Previews (1-1.5 hours) - MEDIUM RISK
+3. Trim Handle Visual Improvements (1 hour) - HIGH RISK
+4. Visual Trim Indicators (1-1.5 hours) - MEDIUM RISK
+5. Media Library Two-Button System (30 min) - MEDIUM RISK
+
+**Total Phase 2 Estimate**: 6-7 hours
+**Detailed specs in**: POST_PRD1_POLISH_SPEC.md with protective implementation notes
 
 ## Recent Changes (Last 10 Commits)
 
