@@ -19,6 +19,7 @@ const Timeline: React.FC = () => {
   const [tempTrimStart, setTempTrimStart] = React.useState<number | null>(null);
   const [tempTrimEnd, setTempTrimEnd] = React.useState<number | null>(null);
   const [isTrimming, setIsTrimming] = React.useState(false);
+  const [trimHandlePositions, setTrimHandlePositions] = React.useState<Record<string, { left: number; right: number }>>({});
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -54,6 +55,13 @@ const Timeline: React.FC = () => {
   const applyTrim = () => {
     if (!selectedClipId || tempTrimStart === null || tempTrimEnd === null) return;
     
+    console.log('Applying trim:', { 
+      clipId: selectedClipId, 
+      trimStart: tempTrimStart, 
+      trimEnd: tempTrimEnd,
+      originalClip: clips.find(c => c.id === selectedClipId)
+    });
+    
     useTimelineStore.getState().updateClip(selectedClipId, {
       trimStart: tempTrimStart,
       trimEnd: tempTrimEnd
@@ -62,7 +70,15 @@ const Timeline: React.FC = () => {
     setTempTrimStart(null);
     setTempTrimEnd(null);
     setIsTrimming(false);
-    console.log('Applied trim:', { trimStart: tempTrimStart, trimEnd: tempTrimEnd });
+    
+    // Force re-render to show updated trim handles
+    setTimeout(() => {
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.renderAll();
+      }
+    }, 100);
+    
+    console.log('Trim applied successfully');
   };
 
   const cancelTrim = () => {
@@ -365,9 +381,15 @@ const Timeline: React.FC = () => {
         
         canvas.add(clipRect);
 
+        // Calculate trim handle positions based on current trim values
+        const currentTrimStart = clip.trimStart;
+        const currentTrimEnd = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
+        const trimStartX = clipX + (currentTrimStart / clip.duration) * clipWidth;
+        const trimEndX = clipX + (currentTrimEnd / clip.duration) * clipWidth;
+
         // Left trim handle (on all clips)
         const leftHandle = new fabric.Rect({
-          left: clipX - handleWidth/2,
+          left: trimStartX - handleWidth/2,
           top: clipY,
           width: handleWidth,
           height: clipHeight,
@@ -389,7 +411,7 @@ const Timeline: React.FC = () => {
 
         // Right trim handle (on all clips)
         const rightHandle = new fabric.Rect({
-          left: clipX + clipWidth - handleWidth/2,
+          left: trimEndX - handleWidth/2,
           top: clipY,
           width: handleWidth,
           height: clipHeight,
@@ -476,7 +498,33 @@ const Timeline: React.FC = () => {
     canvas.renderAll();
     
     console.log('Canvas rendered - Playhead:', formatTime(playhead), 'Clips:', clips.length);
-  }, [playhead, clips, totalDuration, zoom]); // Re-run when these Zustand values change
+  }, [clips, totalDuration, zoom, selectedClipId]); // Re-run when clips or selection changes, NOT on playhead
+
+  // Separate effect to update playhead position without re-rendering canvas
+  useLayoutEffect(() => {
+    if (!fabricCanvasRef.current) return;
+    
+    const canvas = fabricCanvasRef.current;
+    const totalDuration = useTimelineStore.getState().totalDuration;
+    
+    if (totalDuration > 0) {
+      const x = (playhead / totalDuration) * canvas.width!;
+      
+      // Find and update playhead line
+      const objects = canvas.getObjects();
+      const playheadLine = objects.find((obj: any) => obj.playhead === true);
+      const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
+      
+      if (playheadLine) {
+        playheadLine.set({ x1: x, x2: x });
+      }
+      if (playheadTriangle) {
+        playheadTriangle.set({ left: x - 6 });
+      }
+      
+      canvas.renderAll();
+    }
+  }, [playhead]); // Only update playhead position
 
   return (
     <div className="h-full flex flex-col w-full">
