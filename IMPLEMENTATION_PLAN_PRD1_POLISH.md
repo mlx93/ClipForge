@@ -29,7 +29,28 @@
 - Alternative: Manually call `canvas.setZoom(zoom)` and `canvas.renderAll()`
 - Scale clip widths based on zoom: `clipWidth = (clipDuration / totalDuration) * canvas.width * zoom`
 
-### **3. Project Save/Load** 💾
+### **3. Fix Clip Movement on Timeline** 🔄 NEW
+- **Problem:** Clips show 4-arrow cursor but can't be moved/reordered
+- **Solution:** Enable clip dragging and reordering on timeline
+- Make main clip rectangles `selectable: true` and `movable: true`
+- Implement `object:moving` event for clip reordering
+- Update Zustand store with new clip order
+
+### **4. Add Media Library Drag & Drop Reordering** 📋 NEW
+- **Problem:** Can't reorder videos in the imported panel
+- **Solution:** Add drag & drop reordering to MediaLibrary component
+- Use React DnD or native HTML5 drag & drop
+- Update media library order in Zustand store
+- Visual feedback during drag operations
+
+### **5. Fix Trim Functionality** ✂️ NEW
+- **Problem:** Red trim bars move but don't actually trim the video
+- **Solution:** Ensure trim values are properly applied to video playback
+- Update video preview to respect trim points
+- Fix trim calculation in `object:moving` event
+- Test that trimmed video plays correctly
+
+### **6. Project Save/Load** 💾
 - Create `src/main/projectManager.ts` with save/load functions
 - IPC handlers: `save-project`, `load-project`
 - Save format (JSON):

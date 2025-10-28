@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTimelineStore } from './store/timelineStore';
 import { useExportStore } from './store/exportStore';
+import { useMediaLibraryStore } from './store/mediaLibraryStore';
 import ImportZone from './components/ImportZone';
 import MediaLibrary from './components/MediaLibrary';
 import Timeline from './components/Timeline';
@@ -11,6 +12,7 @@ import { Clip } from '@shared/types';
 const App: React.FC = () => {
   const { clips, addClips } = useTimelineStore();
   const { isExporting, showExportDialog, setShowExportDialog } = useExportStore();
+  const { clips: mediaLibraryClips, setClips } = useMediaLibraryStore();
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -43,6 +45,7 @@ const App: React.FC = () => {
       
       if (response.success) {
         addClips(response.clips);
+        setClips([...mediaLibraryClips, ...response.clips]);
         console.log(`Imported ${response.clips.length} video(s)`);
       } else {
         console.error('Import failed:', response.error);
@@ -119,7 +122,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex-1 overflow-y-auto">
-            <MediaLibrary clips={clips} />
+            <MediaLibrary clips={mediaLibraryClips} />
           </div>
         </div>
 

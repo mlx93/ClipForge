@@ -1,14 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { Clip } from '@shared/types';
 import { useTimelineStore } from '../store/timelineStore';
+import { useMediaLibraryStore } from '../store/mediaLibraryStore';
 
 interface MediaLibraryProps {
   clips: Clip[];
 }
 
-const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips }) => {
+const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
   const { removeClip, setSelectedClip, selectedClipId, addClips } = useTimelineStore();
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [localClips, setLocalClips] = useState<Clip[]>(propClips);
+
+  // Update local clips when props change
+  React.useEffect(() => {
+    setLocalClips(propClips);
+  }, [propClips]);
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -62,19 +71,50 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips }) => {
   };
 
   useEffect(() => {
-    clips.forEach(clip => {
+    localClips.forEach(clip => {
       if (!thumbnails[clip.id]) {
         generateThumbnail(clip);
       }
     });
-  }, [clips]);
+  }, [localClips]);
 
   const handleDragStart = (event: React.DragEvent, clip: Clip) => {
     event.dataTransfer.setData('application/json', JSON.stringify(clip));
     event.dataTransfer.effectAllowed = 'move';
+    setDraggedIndex(localClips.indexOf(clip));
   };
 
-  if (clips.length === 0) {
+  const handleDragOver = (event: React.DragEvent, index: number) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (event: React.DragEvent, dropIndex: number) => {
+    event.preventDefault();
+    
+    if (draggedIndex !== null && draggedIndex !== dropIndex) {
+      const newClips = Array.from(localClips);
+      const [movedClip] = newClips.splice(draggedIndex, 1);
+      newClips.splice(dropIndex, 0, movedClip);
+      setLocalClips(newClips);
+      console.log('Reordered media library clips:', newClips.map(c => c.name));
+    }
+    
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  if (localClips.length === 0) {
     return (
       <div className="p-4 text-center text-gray-400">
         <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,18 +129,26 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips }) => {
   return (
     <div className="p-4 space-y-3">
       <div className="text-sm text-gray-400 mb-3">
-        {clips.length} video{clips.length !== 1 ? 's' : ''} imported
+        {localClips.length} video{localClips.length !== 1 ? 's' : ''} imported
       </div>
       
-      {clips.map((clip) => (
+      {localClips.map((clip, index) => (
         <div
           key={clip.id}
           className={`card cursor-pointer transition-all duration-200 hover:bg-gray-700 ${
             selectedClipId === clip.id ? 'ring-2 ring-blue-500 bg-gray-700' : ''
+          } ${
+            draggedIndex === index ? 'opacity-50' : ''
+          } ${
+            dragOverIndex === index ? 'ring-2 ring-yellow-400 bg-gray-600' : ''
           }`}
           onClick={() => setSelectedClip(clip.id)}
           draggable
           onDragStart={(e) => handleDragStart(e, clip)}
+          onDragOver={(e) => handleDragOver(e, index)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, index)}
+          onDragEnd={handleDragEnd}
         >
           <div className="flex items-start space-x-3">
             {/* Thumbnail */}

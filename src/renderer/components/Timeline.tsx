@@ -5,7 +5,7 @@ import { useTimelineStore } from '../store/timelineStore';
 const Timeline: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
-  
+
   // Subscribe to Zustand store - this is the React way
   const clips = useTimelineStore(state => state.clips);
   const playhead = useTimelineStore(state => state.playhead);
@@ -14,6 +14,11 @@ const Timeline: React.FC = () => {
   const selectedClipId = useTimelineStore(state => state.selectedClipId);
   const setPlayhead = useTimelineStore(state => state.setPlayhead);
   const setSelectedClip = useTimelineStore(state => state.setSelectedClip);
+  
+  // Local state for trim preview (before applying)
+  const [tempTrimStart, setTempTrimStart] = React.useState<number | null>(null);
+  const [tempTrimEnd, setTempTrimEnd] = React.useState<number | null>(null);
+  const [isTrimming, setIsTrimming] = React.useState(false);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -45,7 +50,46 @@ const Timeline: React.FC = () => {
     }
   };
 
-  // Keyboard shortcuts for trim/split
+  // Apply or cancel trim
+  const applyTrim = () => {
+    if (!selectedClipId || tempTrimStart === null || tempTrimEnd === null) return;
+    
+    useTimelineStore.getState().updateClip(selectedClipId, {
+      trimStart: tempTrimStart,
+      trimEnd: tempTrimEnd
+    });
+    
+    setTempTrimStart(null);
+    setTempTrimEnd(null);
+    setIsTrimming(false);
+    console.log('Applied trim:', { trimStart: tempTrimStart, trimEnd: tempTrimEnd });
+  };
+
+  const cancelTrim = () => {
+    setTempTrimStart(null);
+    setTempTrimEnd(null);
+    setIsTrimming(false);
+    console.log('Cancelled trim');
+  };
+
+  // Move selected clip left or right
+  const moveClipLeft = () => {
+    if (!selectedClipId) return;
+    const currentIndex = clips.findIndex(c => c.id === selectedClipId);
+    if (currentIndex > 0) {
+      useTimelineStore.getState().reorderClips(currentIndex, currentIndex - 1);
+    }
+  };
+
+  const moveClipRight = () => {
+    if (!selectedClipId) return;
+    const currentIndex = clips.findIndex(c => c.id === selectedClipId);
+    if (currentIndex < clips.length - 1) {
+      useTimelineStore.getState().reorderClips(currentIndex, currentIndex + 1);
+    }
+  };
+
+  // Keyboard shortcuts for clip reordering
   React.useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
@@ -55,6 +99,12 @@ const Timeline: React.FC = () => {
       if (event.key === 's' && selectedClipId) {
         event.preventDefault();
         splitClipAtPlayhead();
+      } else if (event.key === '[' && selectedClipId) {
+        event.preventDefault();
+        moveClipLeft();
+      } else if (event.key === ']' && selectedClipId) {
+        event.preventDefault();
+        moveClipRight();
       }
     };
 
@@ -106,6 +156,7 @@ const Timeline: React.FC = () => {
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
           console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
           setPlayhead(newTime);
+          // Don't deselect clip when clicking empty space - keep selection
         } else {
           console.log('Clicked on object:', event.target);
           const target = event.target as any;
@@ -118,43 +169,53 @@ const Timeline: React.FC = () => {
       // Handle trim handle dragging
       canvas.on('object:moving', (event) => {
         const target = event.target as any;
-        if (target && target.isTrimHandle) {
-          const clip = clips.find(c => c.id === target.clipId);
-          if (!clip) return;
+        if (!target || !target.isTrimHandle) return;
+        
+        const clip = clips.find(c => c.id === target.clipId);
+        if (!clip) return;
 
-          const currentTotalDuration = useTimelineStore.getState().totalDuration;
-          const newX = target.left + target.width / 2; // Center of handle
-          const newTime = (newX / canvas.width!) * currentTotalDuration;
+        setIsTrimming(true);
 
-          // Find clip's start time on timeline
-          let clipStartTime = 0;
-          for (const c of clips) {
-            if (c.id === clip.id) break;
-            const clipDuration = c.trimEnd > 0 ? c.trimEnd - c.trimStart : c.duration - c.trimStart;
-            clipStartTime += clipDuration;
+        const currentTotalDuration = useTimelineStore.getState().totalDuration;
+        const newX = target.left + target.width / 2; // Center of handle
+        const newTime = (newX / canvas.width!) * currentTotalDuration;
+
+        // Find clip's start time on timeline
+        let clipStartTime = 0;
+        for (const c of clips) {
+          if (c.id === clip.id) break;
+          const clipDuration = c.trimEnd > 0 ? c.trimEnd - c.trimStart : c.duration - c.trimStart;
+          clipStartTime += clipDuration;
+        }
+
+        if (target.handleType === 'left') {
+          // Constrain to clip bounds
+          const minX = target.clipStartX;
+          const maxX = target.clipStartX + target.clipWidth - handleWidth;
+          target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
+
+          // Calculate new trim start (relative to clip start)
+          const relativeTime = newTime - clipStartTime;
+          const newTrimStart = Math.max(0, Math.min(relativeTime, clip.duration));
+          setTempTrimStart(newTrimStart);
+          if (tempTrimEnd === null) {
+            setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
           }
+          console.log('Left trim handle preview:', { newTrimStart, clipDuration: clip.duration });
+        } else if (target.handleType === 'right') {
+          // Constrain to clip bounds
+          const minX = target.clipStartX + handleWidth;
+          const maxX = target.clipStartX + target.clipWidth;
+          target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
 
-          if (target.handleType === 'left') {
-            // Constrain to clip bounds
-            const minX = target.clipStartX;
-            const maxX = target.clipStartX + target.clipWidth - handleWidth;
-            target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
-
-            // Calculate new trim start
-            const relativeTime = newTime - clipStartTime;
-            const newTrimStart = Math.max(0, Math.min(relativeTime, clip.duration));
-            useTimelineStore.getState().updateClip(clip.id, { trimStart: newTrimStart });
-          } else if (target.handleType === 'right') {
-            // Constrain to clip bounds
-            const minX = target.clipStartX + handleWidth;
-            const maxX = target.clipStartX + target.clipWidth;
-            target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
-
-            // Calculate new trim end
-            const relativeTime = newTime - clipStartTime;
-            const newTrimEnd = Math.max(0, Math.min(relativeTime, clip.duration));
-            useTimelineStore.getState().updateClip(clip.id, { trimEnd: newTrimEnd });
+          // Calculate new trim end (relative to clip start)
+          const relativeTime = newTime - clipStartTime;
+          const newTrimEnd = Math.max(0, Math.min(relativeTime, clip.duration));
+          setTempTrimEnd(newTrimEnd);
+          if (tempTrimStart === null) {
+            setTempTrimStart(clip.trimStart);
           }
+          console.log('Right trim handle preview:', { newTrimEnd, clipDuration: clip.duration });
         }
       });
 
@@ -273,7 +334,7 @@ const Timeline: React.FC = () => {
         const clipX = (currentTime / totalDuration) * canvas.width!;
 
         // Main clip rectangle
-        canvas.add(new fabric.Rect({
+        const clipRect = new fabric.Rect({
           left: clipX,
           top: clipY,
           width: clipWidth,
@@ -281,10 +342,16 @@ const Timeline: React.FC = () => {
           fill: selectedClipId === clip.id ? '#1e40af' : '#3b82f6',
           stroke: selectedClipId === clip.id ? '#1d4ed8' : '#1e40af',
           strokeWidth: selectedClipId === clip.id ? 3 : 2,
-          selectable: false,
+          selectable: false, // Disable dragging for now to avoid overlap issues
+          lockMovementY: true,
+          hasControls: false,
+          hasBorders: false,
           evented: true,
           clipId: clip.id,
-        } as any));
+          originalIndex: clips.indexOf(clip),
+        } as any);
+        
+        canvas.add(clipRect);
 
         // Left trim handle (only for selected clip)
         if (selectedClipId === clip.id) {
@@ -416,35 +483,74 @@ const Timeline: React.FC = () => {
           </span>
         </div>
         
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => useTimelineStore.getState().setZoom(zoom * 0.8)}
-            className="text-gray-400 hover:text-white px-2 py-1 rounded"
-            title="Zoom out"
-          >
-            −
-          </button>
-          <span className="text-sm text-gray-400 min-w-[60px] text-center">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            onClick={() => useTimelineStore.getState().setZoom(zoom * 1.25)}
-            className="text-gray-400 hover:text-white px-2 py-1 rounded"
-            title="Zoom in"
-          >
-            +
-          </button>
-          
-          {selectedClipId && (
-            <button
-              onClick={splitClipAtPlayhead}
-              className="text-gray-400 hover:text-red-400 px-2 py-1 rounded text-sm"
-              title="Split clip at playhead (S)"
-            >
-              Split
-            </button>
-          )}
-        </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => useTimelineStore.getState().setZoom(zoom * 0.8)}
+                    className="text-gray-400 hover:text-white px-2 py-1 rounded"
+                    title="Zoom out"
+                  >
+                    −
+                  </button>
+                  <span className="text-sm text-gray-400 min-w-[60px] text-center">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <button
+                    onClick={() => useTimelineStore.getState().setZoom(zoom * 1.25)}
+                    className="text-gray-400 hover:text-white px-2 py-1 rounded"
+                    title="Zoom in"
+                  >
+                    +
+                  </button>
+
+                  {isTrimming && (
+                    <>
+                      <div className="border-l border-gray-600 h-6 mx-2"></div>
+                      <button
+                        onClick={applyTrim}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium"
+                        title="Apply trim"
+                      >
+                        ✓ Apply Trim
+                      </button>
+                      <button
+                        onClick={cancelTrim}
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium"
+                        title="Cancel trim"
+                      >
+                        ✕ Cancel
+                      </button>
+                    </>
+                  )}
+
+                  {selectedClipId && !isTrimming && (
+                    <>
+                      <div className="border-l border-gray-600 h-6 mx-2"></div>
+                      <button
+                        onClick={moveClipLeft}
+                        disabled={clips.findIndex(c => c.id === selectedClipId) === 0}
+                        className="text-gray-400 hover:text-white px-2 py-1 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Move clip left ([)"
+                      >
+                        ←
+                      </button>
+                      <button
+                        onClick={moveClipRight}
+                        disabled={clips.findIndex(c => c.id === selectedClipId) === clips.length - 1}
+                        className="text-gray-400 hover:text-white px-2 py-1 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Move clip right (])"
+                      >
+                        →
+                      </button>
+                      <button
+                        onClick={splitClipAtPlayhead}
+                        className="text-gray-400 hover:text-red-400 px-2 py-1 rounded text-sm"
+                        title="Split clip at playhead (S)"
+                      >
+                        Split
+                      </button>
+                    </>
+                  )}
+                </div>
       </div>
 
       <div className="flex-1 relative overflow-hidden w-full">
