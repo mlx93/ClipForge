@@ -1,9 +1,53 @@
 # Active Context
 
 ## Current Work Focus
-**Priority**: Export Functionality Fixed ✅ - Core App Complete
+**Priority**: Export UI Complete ✅ - Professional Export Experience
 
-## Recent Changes (Last 7 Commits)
+## Recent Changes (Last 9 Commits)
+
+### Commit f1e13ec - Export Progress UI Fixed (Real-time Updates Working) ✅
+- **Problem 1**: Progress bar stuck at 0% during export
+  - FFmpeg's `progress.percent` unreliable/undefined with complex filters
+  - Progress events firing in main process but not reaching UI
+  - Root cause: Manual calculation needed for concat operations
+- **Solution 1**:
+  - Calculate total duration from all clips (respecting trim points)
+  - Parse FFmpeg's timemark (format: "HH:MM:SS.ms") to get elapsed time
+  - Manual progress calculation: `(elapsed time / total duration) * 100`
+  - Progress now updates smoothly: 1% → 14% → 27% → 55% → 99%
+- **Problem 2**: IPC progress events not reaching renderer
+  - handleProgress callback had incorrect signature with extra `_` parameter
+  - Events were being sent but not processed in renderer
+- **Solution 2**:
+  - Fixed callback signature to match preload script format
+  - Removed extra underscore parameter that was blocking updates
+  - Added debug logging to track progress flow through IPC
+- **Problem 3**: Modal stayed open too long after export
+  - 1.5 second delay felt sluggish after toast appeared
+- **Solution 3**:
+  - Changed to instant modal close when export completes
+  - Toast notification provides sufficient user feedback
+- **Impact**: Professional export experience with real-time visual feedback
+- **Files Modified**:
+  - src/main/ffmpeg.ts: Manual progress calculation from timemark
+  - src/renderer/store/exportStore.ts: Fixed IPC callback, instant close
+  - All other export UI improvements from previous commit
+- **All Features Working**:
+  - ✅ Real-time progress bar (0% → 100%)
+  - ✅ Percentage displayed inside bar and below
+  - ✅ Estimated time remaining calculation
+  - ✅ Instant modal close on completion
+  - ✅ File overwrite protection with confirmation
+  - ✅ Toast notification on success
+
+### Commit 6b01f49 - Memory Bank Update (Export Logic Documentation) ✅
+- **Purpose**: Document critical FFmpeg export logic to prevent future breaking changes
+- **Changes**:
+  - Added CRITICAL warning section to systemPatterns.md
+  - Documented required module import pattern (require vs import)
+  - Documented required filter chain architecture
+  - Marked export logic as DO NOT MODIFY without review
+- **Impact**: Future developers will understand why export code is structured this way
 
 ### Commit 05ea803 - FFmpeg Export Errors Fixed (CRITICAL) ✅
 - **Problem 1**: TypeError: ffmpeg.input is not a function

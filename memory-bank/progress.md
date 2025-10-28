@@ -1,8 +1,48 @@
 # Project Progress
 
-## Recent Achievements (Last 7 Commits)
+## Recent Achievements (Last 9 Commits)
 
-### FFmpeg Export Fix (October 2025) ✅ - CRITICAL BUG FIX
+### Export Progress UI Fixed (f1e13ec) ✅ - REAL-TIME UPDATES WORKING
+- **Problem**: Progress bar stuck at 0% throughout entire export
+- **Root Cause Analysis**:
+  - FFmpeg's `progress.percent` unreliable with complex filter chains (concat)
+  - IPC callback signature mismatch blocking renderer updates
+  - Extra underscore parameter in handleProgress callback
+- **Technical Solutions**:
+  - Manual progress calculation from FFmpeg timemark
+  - Parse "HH:MM:SS.ms" format to calculate elapsed seconds
+  - Formula: `(elapsed time / total duration) * 100`
+  - Fixed IPC callback: removed `_` parameter to match preload format
+  - Changed modal close to instant (was 1.5s delay)
+- **Code Changes**:
+  ```typescript
+  // Calculate total duration from all clips
+  const totalDuration = clips.reduce((sum, clip) => {
+    if (clip.trimEnd > 0) return sum + (clip.trimEnd - clip.trimStart);
+    return sum + clip.duration;
+  }, 0);
+  
+  // Parse timemark and calculate progress
+  const timemarkParts = progress.timemark.split(':');
+  const currentTime = hours * 3600 + minutes * 60 + seconds;
+  percent = Math.round((currentTime / totalDuration) * 100);
+  ```
+- **Impact**: Professional export experience with smooth real-time progress updates
+- **All Features Working**:
+  - ✅ Progress bar animates from 1% → 99% in real-time
+  - ✅ Percentage number displayed inside bar (when > 10%)
+  - ✅ Percentage text below bar ("X% complete")
+  - ✅ Estimated time remaining calculation and display
+  - ✅ Modal closes instantly on completion
+  - ✅ File overwrite protection with confirmation dialog
+  - ✅ Toast notification confirms successful export
+
+### Memory Bank Documentation (6b01f49) ✅
+- **Purpose**: Protect critical FFmpeg export logic from future modifications
+- **Documentation Added**: CRITICAL warnings in systemPatterns.md
+- **Impact**: Future developers will understand export architecture requirements
+
+### FFmpeg Export Fix (05ea803) ✅ - CRITICAL BUG FIX
 - **Problem**: Export functionality failing with "TypeError: ffmpeg.input is not a function"
 - **Root Cause**: Vite's `_interopNamespaceDefault` helper was converting the fluent-ffmpeg function to a non-callable object
 - **Technical Analysis**:
