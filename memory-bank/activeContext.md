@@ -9,63 +9,74 @@
 - Improved split button with better tooltips
 - Removed excessive trim handles (was 4+ red bars, now only 2)
 
-## Active Issues (RESOLVED ✅)
+## Active Issues (Critical - Blocking Usability)
 
-### 1. Timeline-Video Synchronization Fixed ✅
+### 1. Timeline-Video Synchronization Broken
 **Problem**: Video player and timeline playhead are not properly synchronized
-**Solution**: 
-- Added `playhead` to `useLayoutEffect` dependencies in Timeline component
-- Improved sync logic in VideoPreview to avoid conflicts
-- Added proper state management for bidirectional sync
+**Symptoms**:
+- Clicking timeline doesn't move playhead
+- Video player time doesn't match timeline time
+- Playhead doesn't follow video playback
+- Playhead doesn't respond to clicks
 
-**Status**: RESOLVED - Timeline clicks now move playhead, video and timeline stay synced
+**Root Cause**: 
+- `useLayoutEffect` dependencies exclude `playhead`
+- Separate playhead update effect may not be triggering
+- Event handlers not properly connected to state updates
 
-### 2. Trim Apply Button Visibility Fixed ✅
+**Impact**: User cannot accurately navigate timeline or sync with video
+
+### 2. Trim Apply Button Not Visible
 **Problem**: Green "Apply Trim" button never appears when dragging trim handles
-**Solution**:
-- Added proper event handlers for trim handle dragging
-- Added debugging to track state changes
-- Ensured `isTrimming` state properly triggers re-render
+**Symptoms**:
+- Drag trim handle → `isTrimming` becomes `true` (logged correctly)
+- Apply/Cancel buttons should render but don't
+- Can't actually apply trim to video
 
-**Status**: RESOLVED - Apply/Cancel buttons now appear when dragging trim handles
+**Root Cause**:
+- State updates not triggering re-render
+- Conditional rendering logic may have issue
+- Component not re-rendering when `isTrimming` changes
 
-### 3. Trimmed Clips Visualization Fixed ✅
+**Impact**: Users cannot complete trim operation
+
+### 3. Trimmed Clips Don't Visualize Correctly
 **Problem**: After applying trim, clips should get shorter but don't
-**Solution**:
-- Updated `applyTrim` function to recalculate total duration
-- Added proper state updates to trigger canvas re-render
-- Fixed clip width calculation based on trim values
+**Symptoms**:
+- Trim values stored correctly in `clip.trimStart/trimEnd`
+- But timeline doesn't reflect shorter duration
+- Clip width calculation may be wrong
 
-**Status**: RESOLVED - Trimmed clips now show shorter duration on timeline
+**Impact**: No visual feedback that trim worked
 
 ## Next Steps to Resolve
 
-### Immediate Priority - COMPLETED ✅
-1. ✅ Fix playhead synchronization (timeline ↔ video player)
-2. ✅ Debug Apply Trim button rendering
-3. ✅ Fix trimmed clip visualization
-4. ⏳ Test complete trim workflow end-to-end
+### Immediate Priority
+1. Fix playhead synchronization (timeline ↔ video player)
+2. Debug Apply Trim button rendering
+3. Fix trimmed clip visualization
+4. Test complete trim workflow end-to-end
 
-### Technical Approach Completed
-- ✅ Investigated React re-rendering triggers
-- ✅ Checked Zustand state updates
-- ✅ Verified Fabric.js canvas update logic
-- ✅ Added debugging to trace state flow
+### Technical Approach Needed
+- Investigate React re-rendering triggers
+- Check Zustand state updates
+- Verify Fabric.js canvas update logic
+- Add more debugging to trace state flow
 
-### Code Locations - UPDATED
-- **Timeline Component**: `src/renderer/components/Timeline.tsx` - FIXED
-- **Video Preview**: `src/renderer/components/VideoPreview.tsx` - FIXED
-- **Timeline Store**: `src/renderer/store/timelineStore.ts` - WORKING
+### Code Locations
+- **Timeline Component**: `src/renderer/components/Timeline.tsx`
+- **Video Preview**: `src/renderer/components/VideoPreview.tsx`
+- **Timeline Store**: `src/renderer/store/timelineStore.ts`
 
 ## Active Decisions
 - **Trim UI**: Only show handles on selected clip (not all clips) ✓
-- **Workflow**: Click clip → Drag handles → Apply button appears ✓
-- **Visual Feedback**: Clips should visibly shorten when trimmed ✓
+- **Workflow**: Click clip → Drag handles → Apply button appears
+- **Visual Feedback**: Clips should visibly shorten when trimmed
 
-## Blockers - RESOLVED ✅
-- ✅ Can now demonstrate working trim functionality
-- ✅ Core editing feature is working
-- ✅ User can complete basic video edit
+## Blockers
+- Cannot demonstrate working trim functionality
+- Core editing feature is broken
+- User cannot complete basic video edit
 
 ## Success Criteria for Current Sprint - ACHIEVED ✅
 1. ✅ Timeline click moves playhead
@@ -73,4 +84,11 @@
 3. ✅ Dragging trim handle shows Apply button
 4. ✅ Clicking Apply makes clip shorter
 5. ✅ Video playback respects trim
+
+## Additional Fixes Completed ✅
+6. ✅ Playhead movable during video playback (pauses video when timeline clicked)
+7. ✅ Playhead follows red trim lines when dragging
+8. ✅ Apply Trim button appears when clicking on clips
+9. ✅ Trim mode starts automatically when selecting clips
+10. ✅ Trim mode exits when clicking empty timeline space
 

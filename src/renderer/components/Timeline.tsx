@@ -180,15 +180,34 @@ const Timeline: React.FC = () => {
           const clickedTime = (pointer.x / canvas.width!) * currentTotalDuration;
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
           console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
+          
+          // Pause video if it's playing when timeline is clicked
+          const videoElement = document.querySelector('video');
+          if (videoElement && !videoElement.paused) {
+            console.log('Pausing video for timeline interaction');
+            videoElement.pause();
+          }
+          
           setPlayhead(newTime);
           console.log('Playhead set to:', newTime);
-          // Don't deselect clip when clicking empty space - keep selection
+          // Exit trim mode when clicking empty space
+          setIsTrimming(false);
         } else {
           console.log('Clicked on object:', event.target);
           const target = event.target as any;
           if (target.clipId && !target.isTrimHandle) {
             setSelectedClip(target.clipId);
-            console.log('Selected clip:', target.clipId);
+            // Start trim mode when clicking on a clip
+            setIsTrimming(true);
+            console.log('Selected clip and started trim mode:', target.clipId);
+          } else if (target.isTrimHandle) {
+            // Clicking on trim handle should start trim mode
+            const clip = clips.find(c => c.id === target.clipId);
+            if (clip) {
+              setSelectedClip(target.clipId);
+              setIsTrimming(true);
+              console.log('Started trim mode for clip:', target.clipId);
+            }
           }
         }
       });
@@ -236,6 +255,9 @@ const Timeline: React.FC = () => {
           const newPlayheadTime = clipStartTime + newTrimStart;
           setPlayhead(newPlayheadTime);
           
+          // Force canvas re-render to show updated playhead
+          canvas.renderAll();
+          
           console.log('Left trim handle preview:', { newTrimStart, clipDuration: clip.duration, playhead: newPlayheadTime });
         } else if (target.handleType === 'right') {
           // Constrain to clip bounds
@@ -254,6 +276,9 @@ const Timeline: React.FC = () => {
           // Update playhead to follow trim handle
           const newPlayheadTime = clipStartTime + newTrimEnd;
           setPlayhead(newPlayheadTime);
+          
+          // Force canvas re-render to show updated playhead
+          canvas.renderAll();
           
           console.log('Right trim handle preview:', { newTrimEnd, clipDuration: clip.duration, playhead: newPlayheadTime });
         }
@@ -341,7 +366,7 @@ const Timeline: React.FC = () => {
       if (clips.length > 0 && totalDuration > 0) {
         let timeInterval = 5;
         const minSpacing = 80;
-        const pixelsPerSecond = canvas.width! / totalDuration;
+        const pixelsPerSecond = (canvas.width! / totalDuration) * zoom;
         
         if (timeInterval * pixelsPerSecond < minSpacing) {
           timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
