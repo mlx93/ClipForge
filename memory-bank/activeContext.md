@@ -1,9 +1,26 @@
 # Active Context
 
 ## Current Work Focus
-**Priority**: Timeline UI Polish & Refinements 🎨
+**Priority**: All UI Polish Complete ✅ - Ready for Next Phase
 
-## Recent Changes (Last 5 Commits)
+## Recent Changes (Last 6 Commits)
+
+### Commit 6a399e1 - Complete UI Polish & Trim Persistence (All Issues Resolved) ✅
+- **Problem**: Multiple UX issues with trim persistence, button visibility, and media library display
+- **Issues Fixed**:
+  - Both trim handles now preserve position after video playback (left and right)
+  - Reorder and Split buttons always visible during trim mode
+  - Media library clip names display with wrapping (no truncation)
+  - Apply/Cancel buttons repositioned before zoom controls
+  - Clip colors reversed correctly (selected = light blue, unselected = dark blue)
+- **Solutions**:
+  - Check `wasAlreadySelected` using fresh state from Zustand store
+  - Only reset trim values when selecting a DIFFERENT clip
+  - Changed MediaLibrary to use 2-line wrapping with -webkit-line-clamp
+  - Removed `!isTrimming` condition from reorder/split button visibility
+  - Repositioned trim buttons to left of zoom controls
+  - Updated all color references with new scheme
+- **Impact**: All user-reported issues resolved, trim workflow now fully stable and intuitive
 
 ### Commit 59ddc39 - Timeline Trim Drag Fix (Critical) ✅
 - **Problem**: Trim handles could not be dragged - they immediately got stuck
@@ -110,20 +127,43 @@
 - Text now maintains consistent size regardless of zoom level
 - Affects: time grid labels, clip titles, clip duration text
 
-## Upcoming UI Polish Tasks 🎨
+### 7. Trim Handle Persistence After Playback - FIXED ✅
+**Problem**: Trim handles reset to original positions after video playback when clicked again
+**Solution**:
+- Check if same clip already selected: `useTimelineStore.getState().selectedClipId === target.clipId`
+- Only reset trim values when selecting a DIFFERENT clip
+- Preserve tempTrimStart/tempTrimEnd when re-selecting same clip or trim handles
+- Avoids stale closure by getting fresh state from store
+**Impact**: Both left and right trim handles maintain position through pause/resume cycles
 
-### Timeline Header Improvements
-1. **Video Play Button**: Should not reset trim settings when playing video
-2. **Header Text**: Remove "Trimming: [clipname]" text, keep reorder icons and Split button
-3. **Button Sizing**: Make Apply Trim and Cancel buttons smaller for sleeker header
-4. **Rename Button**: Change "Split at Playhead" to "Split"
+### 8. Timeline Header UX - FIXED ✅
+**Problem**: Header cluttered, buttons covering other controls, "Trimming:" text unnecessary
+**Solution**:
+- Removed "Trimming: [clipname]" text
+- Made Apply/Cancel buttons smaller (px-3 py-1, text-xs)
+- Repositioned trim buttons to LEFT of zoom controls
+- Renamed "Split at Playhead" to "Split"
+- Reorder/Split buttons always visible (removed `!isTrimming` condition)
+**Impact**: Cleaner header, all controls accessible during trim mode
 
-### Clip Visual Improvements
-5. **Clip Colors**: Reverse colors - selected clips should be light blue, unselected dark blue
-6. **Clip Titles**: Wrap/display full titles within clips (fix truncation issues)
+### 9. Clip Visual Improvements - FIXED ✅
+**Problem**: Selected clips darker than unselected (reversed), titles truncated
+**Solution**:
+- Reversed colors: selected = #60a5fa (light blue), unselected = #3b82f6 (dark blue)
+- Updated hover: selected = #93c5fd, unselected = #60a5fa
+- Changed fabric.Text to fabric.Textbox with wrapping
+- Dynamic maxTextWidth: (clipWidth - 16) * zoom
+**Impact**: Better visual hierarchy, full clip names visible on timeline
 
-### Media Library Improvements  
-7. **Title Display**: Show full titles in left import panel, add hover tooltip for full text
+### 10. Media Library Display - FIXED ✅
+**Problem**: Clip names truncated, tooltips not working
+**Solution**:
+- Changed to text-sm with 2-line wrapping using -webkit-line-clamp
+- Uses break-words for long filenames
+- Removed non-functional tooltip in favor of visible wrapping
+**Impact**: Full clip names visible in media library without truncation
+
+## UI Polish Tasks - ALL COMPLETED ✅
 
 ### Testing Required - ALL PASSED ✅
 1. ✅ Test complete workflow: import video → click timeline → select clip → drag trim handles → verify Apply button
@@ -160,6 +200,11 @@
 14. ✅ Trim values update correctly during drag operations
 15. ✅ Apply Trim uses actual trim values, not fallback values
 16. ✅ Text elements (time numbers, clip titles) remain readable at all zoom levels
+17. ✅ Trim handles preserve position after video playback (both left and right)
+18. ✅ Reorder and Split buttons accessible during trim mode
+19. ✅ Clean header layout with repositioned trim buttons
+20. ✅ Clip colors correctly reflect selection state
+21. ✅ Full clip names visible in timeline and media library
 
 ## Technical Achievements
 
@@ -181,4 +226,16 @@
 - Fixed stale closure anti-pattern across all event handlers
 - Added skip logic to prevent canvas re-render interruptions during drag
 - Timestamp-based file naming to prevent trim output overwrites
+- Trim preservation logic: check wasAlreadySelected before resetting values
+- All UI improvements use Tailwind utility classes for maintainability
+
+## Next Steps
+
+### Ready for PRD-2 Features
+All Phase 1 (MVP) and Polish features complete. Ready to begin:
+- Advanced editing features
+- Effects and transitions
+- Multi-track audio
+- Color correction
+- Speed controls
 

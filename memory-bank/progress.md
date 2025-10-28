@@ -1,6 +1,23 @@
 # Project Progress
 
-## Recent Achievements (Last 5 Commits)
+## Recent Achievements (Last 6 Commits)
+
+### Complete UI Polish & Trim Persistence (6a399e1) ✅ - ALL ISSUES RESOLVED
+- **Problem**: Multiple critical UX issues affecting trim workflow and overall polish
+- **Issues Fixed**:
+  - Both trim handles preserve position after video playback (left AND right working perfectly)
+  - Reorder and Split buttons now always visible during trim mode
+  - Media library clip names display with 2-line wrapping (no truncation)
+  - Apply/Cancel buttons repositioned before zoom controls (no overlap)
+  - Clip colors correctly reversed (selected = light blue, unselected = dark blue)
+- **Technical Solutions**:
+  - Check `wasAlreadySelected` using `useTimelineStore.getState().selectedClipId === target.clipId`
+  - Only reset trim values when selecting a DIFFERENT clip (prevents reset on same clip)
+  - MediaLibrary uses -webkit-line-clamp: 2 with break-words for text wrapping
+  - Removed `!isTrimming` condition from button visibility logic
+  - Trim buttons moved before zoom controls in header flex layout
+  - All color references updated to new scheme (#60a5fa selected, #3b82f6 unselected)
+- **Impact**: All user-reported issues resolved, trim workflow completely stable, professional UI
 
 ### Trim Handle Drag Fix (59ddc39) ✅ - CRITICAL
 - **Problem**: Trim handles stuck during drag - could not move them
@@ -135,17 +152,28 @@
 - ✅ Canvas re-rendering interrupting drag - FIXED (added to main effect)
 - ✅ Trim values not updating - FIXED (fresh state from store)
 - ✅ Trim handles stuck during drag - FIXED (skip logic in correct effect)
+- ✅ Left trim handle resets after playback - FIXED (wasAlreadySelected check)
+- ✅ Right trim handle resets after playback - FIXED (same logic both handles)
+- ✅ Buttons hidden during trim mode - FIXED (removed !isTrimming condition)
+- ✅ Media library names truncated - FIXED (2-line wrapping)
+- ✅ Clip colors reversed - FIXED (light blue = selected)
 
-## Next Polish Tasks
+## Current Status - PHASE 1 COMPLETE ✅
 
-### Timeline UI Improvements (In Progress)
-1. Video play button should not reset trim settings
-2. Remove "Trimming: [clipname]" text from header
-3. Make Apply Trim/Cancel buttons smaller
-4. Rename "Split at Playhead" to "Split"
-5. Fix clip colors: selected = light blue, unselected = dark blue (currently reversed)
-6. Display full clip titles within clips (fix truncation)
-7. Show full titles in media library import panel with hover tooltips
+### All MVP Features Working Perfectly
+- ✅ Video import with drag & drop
+- ✅ Timeline editing with smooth interactions
+- ✅ Trim functionality with persistence
+- ✅ Split clips at playhead
+- ✅ Reorder clips
+- ✅ Video preview with controls
+- ✅ Export with FFmpeg
+- ✅ Project save/load
+- ✅ Application menu
+- ✅ Timeline zoom
+- ✅ Polish and UX refinements
+
+## Next Polish Tasks - ALL COMPLETED ✅
 
 ## Known Issues
 
