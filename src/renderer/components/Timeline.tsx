@@ -62,23 +62,32 @@ const Timeline: React.FC = () => {
       originalClip: clips.find(c => c.id === selectedClipId)
     });
     
+    // Update the clip with new trim values
     useTimelineStore.getState().updateClip(selectedClipId, {
       trimStart: tempTrimStart,
       trimEnd: tempTrimEnd
     });
     
+    // Recalculate total duration after trim
+    const updatedClips = clips.map(clip => 
+      clip.id === selectedClipId 
+        ? { ...clip, trimStart: tempTrimStart, trimEnd: tempTrimEnd }
+        : clip
+    );
+    
+    const newTotalDuration = updatedClips.reduce((sum, clip) => {
+      const duration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
+      return sum + duration;
+    }, 0);
+    
+    // Update total duration in store
+    useTimelineStore.setState({ totalDuration: newTotalDuration });
+    
     setTempTrimStart(null);
     setTempTrimEnd(null);
     setIsTrimming(false);
     
-    // Force re-render to show updated trim handles
-    setTimeout(() => {
-      if (fabricCanvasRef.current) {
-        fabricCanvasRef.current.renderAll();
-      }
-    }, 100);
-    
-    console.log('Trim applied successfully');
+    console.log('Trim applied successfully, new total duration:', newTotalDuration);
   };
 
   const cancelTrim = () => {
@@ -194,6 +203,7 @@ const Timeline: React.FC = () => {
 
         // Select the clip being trimmed and show trim UI
         setSelectedClip(target.clipId);
+        console.log('Setting isTrimming to true for clip:', target.clipId);
         setIsTrimming(true);
 
         const currentTotalDuration = useTimelineStore.getState().totalDuration;
@@ -247,6 +257,15 @@ const Timeline: React.FC = () => {
           
           console.log('Right trim handle preview:', { newTrimEnd, clipDuration: clip.duration, playhead: newPlayheadTime });
         }
+      });
+
+      // Handle trim handle drag end
+      canvas.on('object:modified', (event) => {
+        const target = event.target as any;
+        if (!target || !target.isTrimHandle) return;
+        
+        console.log('Trim handle drag ended for clip:', target.clipId);
+        // Keep isTrimming true so Apply/Cancel buttons remain visible
       });
 
       // Hover feedback on timeline objects
@@ -482,6 +501,7 @@ const Timeline: React.FC = () => {
           strokeWidth: 2,
           selectable: false,
           evented: false,
+          playhead: true,
         } as any));
 
         canvas.add(new fabric.Triangle({
@@ -492,6 +512,7 @@ const Timeline: React.FC = () => {
           fill: '#ef4444',
           selectable: false,
           evented: false,
+          playhead: true,
         } as any));
       }
     } else {
@@ -513,33 +534,8 @@ const Timeline: React.FC = () => {
     canvas.renderAll();
     
     console.log('Canvas rendered - Playhead:', formatTime(playhead), 'Clips:', clips.length);
-  }, [clips, totalDuration, zoom, selectedClipId]); // Re-run when clips or selection changes, NOT on playhead
+  }, [clips, totalDuration, zoom, selectedClipId, playhead]); // Re-run when clips, selection, or playhead changes
 
-  // Separate effect to update playhead position without re-rendering canvas
-  useLayoutEffect(() => {
-    if (!fabricCanvasRef.current) return;
-    
-    const canvas = fabricCanvasRef.current;
-    const totalDuration = useTimelineStore.getState().totalDuration;
-    
-    if (totalDuration > 0) {
-      const x = (playhead / totalDuration) * canvas.width!;
-      
-      // Find and update playhead line
-      const objects = canvas.getObjects();
-      const playheadLine = objects.find((obj: any) => obj.playhead === true);
-      const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
-      
-      if (playheadLine) {
-        playheadLine.set({ x1: x, x2: x });
-      }
-      if (playheadTriangle) {
-        playheadTriangle.set({ left: x - 6 });
-      }
-      
-      canvas.renderAll();
-    }
-  }, [playhead]); // Only update playhead position
 
   return (
     <div className="h-full flex flex-col w-full">
@@ -602,6 +598,13 @@ const Timeline: React.FC = () => {
                         ✕ Cancel
                       </button>
                     </>
+                  )}
+                  
+                  {/* Debug info */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="text-xs text-gray-500">
+                      isTrimming: {isTrimming.toString()}, selectedClipId: {selectedClipId || 'null'}
+                    </div>
                   )}
 
                   {selectedClipId && !isTrimming && (

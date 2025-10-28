@@ -61,7 +61,8 @@ const VideoPreview: React.FC = () => {
     });
     
     // Only seek if the difference is significant to avoid constant seeking
-    if (Math.abs(video.currentTime - videoTime) > 0.2) {
+    // Also check if video is not currently playing to avoid conflicts
+    if (Math.abs(video.currentTime - videoTime) > 0.2 && video.paused) {
       video.currentTime = videoTime;
     }
   }, [playhead, currentClip, clips]);
@@ -91,11 +92,14 @@ const VideoPreview: React.FC = () => {
         currentPlayhead: playhead
       });
       
-      useTimelineStore.getState().setPlayhead(timelineTime);
+      // Only update if the difference is significant to avoid constant updates
+      if (Math.abs(timelineTime - playhead) > 0.1) {
+        useTimelineStore.getState().setPlayhead(timelineTime);
+      }
     }, 100); // Update every 100ms for smooth playback
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentClip, clips]);
+  }, [isPlaying, currentClip, clips, playhead]);
 
   // Handle video events
   const handleLoadedMetadata = () => {
