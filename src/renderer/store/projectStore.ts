@@ -53,18 +53,28 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   loadProject: (project: Project) => {
-    // Update timeline store with project data
-    useTimelineStore.getState().clearTimeline();
-    useTimelineStore.getState().addClips(project.timeline.clips);
-    useTimelineStore.getState().setPlayhead(project.timeline.playhead);
-    useTimelineStore.getState().setSelectedClip(project.timeline.selectedClipId);
-    useTimelineStore.getState().setZoom(project.timeline.zoom);
-
+    // First, set the project state before updating timeline
+    // This prevents timeline updates from marking the project as dirty
     set({
       currentProject: project,
       isDirty: false,
       lastSaved: project.modified
     });
+
+    // Then update timeline store with project data
+    useTimelineStore.getState().clearTimeline();
+    
+    if (project.timeline.clips.length > 0) {
+      useTimelineStore.getState().addClips(project.timeline.clips);
+    }
+    
+    useTimelineStore.getState().setPlayhead(project.timeline.playhead);
+    
+    if (project.timeline.selectedClipId) {
+      useTimelineStore.getState().setSelectedClip(project.timeline.selectedClipId);
+    }
+    
+    useTimelineStore.getState().setZoom(project.timeline.zoom);
   },
 
   saveProject: async () => {

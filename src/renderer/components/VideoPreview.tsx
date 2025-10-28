@@ -118,6 +118,30 @@ const VideoPreview: React.FC = () => {
     setIsPlaying(false);
   };
 
+  const handleEnded = () => {
+    // When current clip ends, move to next clip if available
+    if (!currentClipInfo) return;
+    
+    const currentClipIndex = clips.findIndex(c => c.id === currentClip?.id);
+    if (currentClipIndex < clips.length - 1) {
+      // Move playhead to start of next clip
+      const nextClipStartTime = currentClipInfo.clipStartTime + currentClipInfo.clipDuration;
+      useTimelineStore.getState().setPlayhead(nextClipStartTime + 0.01); // Small offset to trigger new clip
+      
+      // Resume playing
+      setTimeout(() => {
+        const video = videoRef.current;
+        if (video) {
+          video.play();
+        }
+      }, 50);
+    } else {
+      // End of timeline - pause
+      setIsPlaying(false);
+      useTimelineStore.getState().setPlayhead(totalDuration);
+    }
+  };
+
   const handleError = () => {
     setHasError(true);
     setErrorMessage('Unable to load video. File may be corrupted or unsupported format.');
@@ -234,6 +258,7 @@ const VideoPreview: React.FC = () => {
           className="max-w-full max-h-full"
           onPlay={handlePlay}
           onPause={handlePause}
+          onEnded={handleEnded}
           onError={handleError}
           preload="metadata"
         />

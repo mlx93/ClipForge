@@ -40,30 +40,29 @@ export const useExportStore = create<ExportStore>((set) => ({
       progress: 0,
       currentStep: 'Preparing export...',
       error: null,
-      outputPath: null,
-      showExportDialog: false
+      outputPath: null
     });
 
     try {
       // Set up progress listener for IPC events
-      const handleProgress = (progress: { progress: number; currentStep: string }) => {
+      const handleProgress = (_: any, progress: { progress: number; currentStep: string }) => {
         set({
-          progress: progress.progress,
+          progress: Math.round(progress.progress),
           currentStep: progress.currentStep
         });
       };
 
       // Listen for progress updates from main process
-      window.electron.on('export-progress', handleProgress);
+      window.electronAPI.onExportProgress(handleProgress);
 
       // Call main process to start export
-      const result = await window.electron.invoke(IPC_CHANNELS.EXPORT_TIMELINE, {
+      const result = await window.electronAPI.exportTimeline({
         clips,
         settings
       });
 
       // Remove progress listener
-      window.electron.removeListener('export-progress', handleProgress);
+      window.electronAPI.removeAllListeners(IPC_CHANNELS.EXPORT_PROGRESS);
 
       if (!result.success) {
         throw new Error(result.error || 'Export failed');
@@ -78,14 +77,21 @@ export const useExportStore = create<ExportStore>((set) => ({
         error: null,
         outputPath
       });
+      
+      toast.success(`Export complete! Saved to ${outputPath.split('/').pop()}`);
     } catch (error) {
+      console.error('Export error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Export failed';
+      
       set({
         isExporting: false,
         progress: 0,
         currentStep: '',
-        error: error instanceof Error ? error.message : 'Export failed',
+        error: errorMessage,
         outputPath: null
       });
+      
+      toast.error(errorMessage);
     }
   },
 
