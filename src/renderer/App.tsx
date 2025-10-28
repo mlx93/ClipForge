@@ -152,7 +152,7 @@ const App: React.FC = () => {
         className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between" 
         style={{ 
           paddingTop: '20px',
-          WebkitAppRegion: 'drag'
+          WebkitAppRegion: 'drag' as any
         }}
       >
         <div className="flex items-center space-x-4">
@@ -160,7 +160,7 @@ const App: React.FC = () => {
           <span className="text-sm text-gray-400">v1.0.0</span>
         </div>
         
-        <div className="flex items-center space-x-4" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="flex items-center space-x-4" style={{ WebkitAppRegion: 'no-drag' as any }}>
           <Suspense fallback={<div className="text-gray-400 text-sm">Loading...</div>}>
             <ProjectMenu />
           </Suspense>
@@ -177,7 +177,7 @@ const App: React.FC = () => {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Media Library */}
-        <div className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
+        <div className="w-96 bg-gray-800 border-r border-gray-700 flex flex-col">
           <div className="p-4 border-b border-gray-700">
             <h2 className="text-lg font-semibold mb-3">Media Library</h2>
             <ImportZone onImport={handleImportFiles} />

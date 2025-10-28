@@ -53,16 +53,27 @@ const Timeline: React.FC = () => {
 
   // Apply or cancel trim
   const applyTrim = async () => {
-    if (!selectedClipId || tempTrimStart === null || tempTrimEnd === null) return;
+    if (!selectedClipId || tempTrimStart === null || tempTrimEnd === null) {
+      console.error('Apply trim failed: Missing required data', { 
+        selectedClipId, 
+        tempTrimStart, 
+        tempTrimEnd 
+      });
+      return;
+    }
     
     const clip = clips.find(c => c.id === selectedClipId);
-    if (!clip) return;
+    if (!clip) {
+      console.error('Apply trim failed: Clip not found', { selectedClipId, availableClips: clips.map(c => c.id) });
+      return;
+    }
     
     console.log('Applying trim:', { 
       clipId: selectedClipId, 
       trimStart: tempTrimStart, 
       trimEnd: tempTrimEnd,
-      originalClip: clip
+      originalClip: clip,
+      originalPath: clip.path
     });
     
     try {
@@ -72,6 +83,13 @@ const Timeline: React.FC = () => {
       const extension = pathParts.pop();
       const basePath = pathParts.join('.');
       const outputPath = `${basePath}_trimmed.${extension}`;
+      
+      console.log('Trim paths:', { originalPath, outputPath });
+      
+      // Validate trim values
+      if (tempTrimStart < 0 || tempTrimEnd <= tempTrimStart || tempTrimEnd > clip.duration) {
+        throw new Error(`Invalid trim values: start=${tempTrimStart}, end=${tempTrimEnd}, duration=${clip.duration}`);
+      }
       
       // Show progress indicator
       console.log('Starting video trim...');
@@ -83,6 +101,8 @@ const Timeline: React.FC = () => {
         tempTrimStart,
         tempTrimEnd
       );
+      
+      console.log('Trim result:', result);
       
       if (result.success) {
         // Update the clip with new trim values and new path
@@ -113,6 +133,7 @@ const Timeline: React.FC = () => {
         setIsTrimming(false);
         
         console.log('Trim applied successfully, new total duration:', newTotalDuration);
+        alert('Trim applied successfully!');
       } else {
         console.error('Trim failed:', result.error);
         alert(`Trim failed: ${result.error}`);
@@ -179,8 +200,10 @@ const Timeline: React.FC = () => {
     const resizeObserver = new ResizeObserver(() => {
       if (fabricCanvasRef.current && canvasRef.current) {
         const rect = canvasRef.current.getBoundingClientRect();
+        // Use same width calculation as main useLayoutEffect
+        const newWidth = window.innerWidth - 384; // Full width minus media library width (w-96 = 384px)
         fabricCanvasRef.current.setDimensions({
-          width: rect.width,
+          width: newWidth,
           height: rect.height,
         });
         fabricCanvasRef.current.renderAll();
@@ -210,7 +233,7 @@ const Timeline: React.FC = () => {
         if (!event.target) {
           const pointer = canvas.getPointer(event.e);
           const currentTotalDuration = useTimelineStore.getState().totalDuration;
-          const clickedTime = (pointer.x / (canvas.width! * zoom)) * currentTotalDuration;
+          const clickedTime = (pointer.x / canvas.width!) * currentTotalDuration;
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
           console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
           
@@ -232,6 +255,12 @@ const Timeline: React.FC = () => {
             setSelectedClip(target.clipId);
             // Start trim mode when clicking on a clip
             setIsTrimming(true);
+            // Initialize trim values for the selected clip
+            const clip = clips.find(c => c.id === target.clipId);
+            if (clip) {
+              setTempTrimStart(clip.trimStart);
+              setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+            }
             console.log('Selected clip and started trim mode:', target.clipId);
           } else if (target.isTrimHandle) {
             // Clicking on trim handle should start trim mode
@@ -239,6 +268,9 @@ const Timeline: React.FC = () => {
             if (clip) {
               setSelectedClip(target.clipId);
               setIsTrimming(true);
+              // Initialize trim values for the selected clip
+              setTempTrimStart(clip.trimStart);
+              setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
               console.log('Started trim mode for clip:', target.clipId);
             }
           }
@@ -260,7 +292,7 @@ const Timeline: React.FC = () => {
 
         const currentTotalDuration = useTimelineStore.getState().totalDuration;
         const newX = target.left + target.width / 2; // Center of handle
-        const newTime = (newX / (canvas.width! * zoom)) * currentTotalDuration;
+        const newTime = (newX / canvas.width!) * currentTotalDuration;
 
         // Find clip's start time on timeline
         let clipStartTime = 0;
@@ -289,7 +321,7 @@ const Timeline: React.FC = () => {
           setPlayhead(newPlayheadTime);
           
           // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * zoom;
+          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width!;
           const objects = canvas.getObjects();
           const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line');
           const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
@@ -323,7 +355,7 @@ const Timeline: React.FC = () => {
           setPlayhead(newPlayheadTime);
           
           // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * zoom;
+          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width!;
           const objects = canvas.getObjects();
           const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line');
           const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
@@ -383,9 +415,12 @@ const Timeline: React.FC = () => {
     const canvas = fabricCanvasRef.current;
     const rect = canvasRef.current.getBoundingClientRect();
     
-    // Force canvas to use full width and height
-    const newWidth = rect.width;
+    // Force canvas to use full width of timeline container and container height
+    const newWidth = window.innerWidth - 384; // Full width minus media library width (w-96 = 384px)
     const newHeight = rect.height;
+    
+    // No content offset needed since timeline container is already positioned correctly
+    const contentOffset = 0;
     
     console.log('Setting canvas dimensions:', { 
       newWidth, 
@@ -393,19 +428,18 @@ const Timeline: React.FC = () => {
       rectWidth: rect.width, 
       rectHeight: rect.height,
       containerWidth: canvasRef.current.parentElement?.offsetWidth,
-      windowWidth: window.innerWidth
+      windowWidth: window.innerWidth,
+      contentOffset
     });
     
-    // Force canvas to use full available width - adjust for zoom
-    const finalWidth = newWidth * zoom;
-    
+    // Force canvas to use full available width - zoom only affects visual scaling, not dimensions
     canvas.setDimensions({
-      width: finalWidth,
+      width: newWidth,
       height: newHeight,
     });
     
-    // Ensure canvas fills the container
-    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    // Apply zoom as viewport transform - this scales the content without changing canvas dimensions
+    canvas.setViewportTransform([zoom, 0, 0, 1, 0, 0]);
 
     // Clear and redraw - Zustand state drives the render
     canvas.clear();
@@ -415,7 +449,7 @@ const Timeline: React.FC = () => {
       if (clips.length > 0 && totalDuration > 0) {
         let timeInterval = 5;
         const minSpacing = 80;
-        const pixelsPerSecond = (canvas.width! / totalDuration) * zoom;
+        const pixelsPerSecond = canvas.width! / totalDuration;
         
         if (timeInterval * pixelsPerSecond < minSpacing) {
           timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
@@ -424,8 +458,8 @@ const Timeline: React.FC = () => {
         console.log('Drawing timeline:', { canvasWidth: canvas.width, totalDuration, pixelsPerSecond });
 
         for (let time = 0; time <= totalDuration; time += timeInterval) {
-          const x = (time / totalDuration) * canvas.width! * zoom;
-          if (x > canvas.width! * zoom) break;
+          const x = (time / totalDuration) * canvas.width!;
+          if (x > canvas.width!) break;
 
         canvas.add(new fabric.Line([x, 0, x, canvas.height!], {
           stroke: '#333',
@@ -453,8 +487,8 @@ const Timeline: React.FC = () => {
 
       clips.forEach((clip) => {
         const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
-        const clipWidth = (clipDuration / totalDuration) * canvas.width! * zoom;
-        const clipX = (currentTime / totalDuration) * canvas.width! * zoom;
+        const clipWidth = (clipDuration / totalDuration) * canvas.width!;
+        const clipX = (currentTime / totalDuration) * canvas.width!;
         
         console.log('Rendering clip:', {
           clipName: clip.name,
@@ -568,7 +602,7 @@ const Timeline: React.FC = () => {
 
       // Draw playhead
       if (totalDuration > 0) {
-        const x = (playhead / totalDuration) * canvas.width! * zoom;
+        const x = (playhead / totalDuration) * canvas.width!;
 
         canvas.add(new fabric.Line([x, 0, x, canvas.height!], {
           stroke: '#ef4444',
@@ -612,8 +646,8 @@ const Timeline: React.FC = () => {
 
 
   return (
-    <div className="h-full flex flex-col w-full">
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between w-full">
+    <div className="h-full flex flex-col w-full relative">
+      <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between w-full absolute top-0 z-10" style={{ width: 'calc(100vw - 24rem)', left: '0' }}>
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-400">
             Duration: {formatTime(totalDuration)}
@@ -715,11 +749,11 @@ const Timeline: React.FC = () => {
                 </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden w-full">
+      <div className="flex-1 relative overflow-hidden w-full absolute bottom-0 flex items-center justify-center" style={{ width: 'calc(100vw - 24rem)', left: '0' }}>
         <canvas 
           ref={canvasRef} 
-          className="w-full h-full cursor-pointer" 
-          style={{ width: '100%', height: '100%' }}
+          className="w-full cursor-pointer" 
+          style={{ width: '100%', height: '80%' }}
         />
       </div>
     </div>
