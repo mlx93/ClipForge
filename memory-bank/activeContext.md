@@ -1,9 +1,30 @@
 # Active Context
 
 ## Current Work Focus
-**Priority**: All UI Polish Complete ✅ - Ready for Next Phase
+**Priority**: Export Functionality Fixed ✅ - Core App Complete
 
-## Recent Changes (Last 6 Commits)
+## Recent Changes (Last 7 Commits)
+
+### Commit 05ea803 - FFmpeg Export Errors Fixed (CRITICAL) ✅
+- **Problem 1**: TypeError: ffmpeg.input is not a function
+  - Root cause: Vite's `_interopNamespaceDefault` helper converting fluent-ffmpeg function to non-callable object
+  - ESM imports with TypeScript's esModuleInterop triggered namespace wrapping bug
+  - Function properties copied but callable nature lost
+- **Solution 1**: 
+  - Replaced ESM `import` with direct `require()` calls for fluent-ffmpeg
+  - Updated src/main/ffmpeg.ts and src/main/fileSystem.ts
+  - Bypasses Vite's interop helpers, preserves function type
+- **Problem 2**: FFmpeg filter conflict error
+  - Error: "Filtergraph was specified through -vf option... which is fed from a complex filtergraph"
+  - Root cause: Using both videoFilters() and complexFilter() on same stream
+  - FFmpeg doesn't allow mixing -vf and -filter_complex flags
+- **Solution 2**:
+  - Single clips: Use videoFilters() for scaling
+  - Multiple clips: Integrate scaling into complexFilter chain
+  - Filter chain example: `[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a];[v]scale=...[outv]`
+- **Impact**: Export functionality fully operational, all resolution options working
+- **Documentation**: Created FFMPEG_EXPORT_FIX.md with comprehensive technical analysis
+- **⚠️ CRITICAL**: This export logic documented in systemPatterns.md - DO NOT modify without review
 
 ### Commit 6a399e1 - Complete UI Polish & Trim Persistence (All Issues Resolved) ✅
 - **Problem**: Multiple UX issues with trim persistence, button visibility, and media library display

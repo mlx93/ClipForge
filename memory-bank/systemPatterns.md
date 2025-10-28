@@ -75,11 +75,63 @@ App (Root)
 - **Zustand-first**: State drives render, not events
 - Pattern: Declarative canvas rendering
 
-### 5. Video Processing Pattern
+### 5. Video Processing Pattern ⚠️ CRITICAL - DO NOT MODIFY
 - **Stream-based**: Store file paths, not video data
 - **FFmpeg Wrapper**: fluent-ffmpeg for encoding
 - **Progress Events**: IPC for real-time progress
 - Pattern: Async with progress callbacks
+
+**CRITICAL IMPLEMENTATION NOTES:**
+This export logic is essential for app functionality. DO NOT modify without understanding these requirements:
+
+1. **Module Import Pattern (REQUIRED)**:
+   ```typescript
+   // CORRECT - Use require() for fluent-ffmpeg
+   const ffmpeg = require('fluent-ffmpeg');
+   const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+   
+   // WRONG - ESM imports break with Vite's namespace wrapper
+   import ffmpeg from 'fluent-ffmpeg';  // ❌ DO NOT USE
+   ```
+   - **Why**: fluent-ffmpeg exports a callable function directly (CommonJS)
+   - **Problem**: Vite's `_interopNamespaceDefault` converts function to non-callable object
+   - **Result**: TypeError: ffmpeg.input is not a function
+   - **Files**: src/main/ffmpeg.ts, src/main/fileSystem.ts
+   - **Documentation**: See FFMPEG_EXPORT_FIX.md for full analysis
+
+2. **Filter Chain Architecture (REQUIRED)**:
+   ```typescript
+   // Multiple clips: Use complexFilter for BOTH concat and scale
+   if (clips.length > 1) {
+     let filterChain = `${inputs}concat=n=${n}:v=1:a=1[v][a]`;
+     if (scaleFilter) {
+       filterChain += `;[v]${scaleFilter}[outv]`;  // Integrated scaling
+     }
+     command.complexFilter([filterChain]);
+   } 
+   // Single clip: Can use videoFilters
+   else if (scaleFilter) {
+     command.videoFilters([scaleFilter]);
+   }
+   ```
+   - **Why**: FFmpeg doesn't allow mixing -vf and -filter_complex on same stream
+   - **Problem**: Using videoFilters() after complexFilter() causes FFmpeg error
+   - **Solution**: Integrate all filters into single complexFilter chain
+   - **Files**: src/main/ffmpeg.ts (exportTimeline function)
+
+3. **Export Pipeline Order**:
+   - Add inputs with trim points
+   - Build filter chain (concat + scale if needed)
+   - Apply codec settings
+   - Set output format and path
+   - Attach progress/error handlers
+   - Run command
+
+**Testing Requirements**:
+- Single clip export (with/without scaling)
+- Multi-clip export (with/without scaling)
+- Trim points applied correctly
+- All resolution options work (Source, 720p, 1080p, 4K)
 
 ## Critical Design Decisions
 
