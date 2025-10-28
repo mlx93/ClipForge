@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { useTimelineStore } from './store/timelineStore';
 import { useExportStore } from './store/exportStore';
 import { useMediaLibraryStore } from './store/mediaLibraryStore';
@@ -7,9 +7,11 @@ import ImportZone from './components/ImportZone';
 import MediaLibrary from './components/MediaLibrary';
 import Timeline from './components/Timeline';
 import VideoPreview from './components/VideoPreview';
-import ExportDialog from './components/ExportDialog';
-import ProjectMenu from './components/ProjectMenu';
 import { Clip } from '@shared/types';
+
+// Lazy load components that are not immediately needed
+const ExportDialog = lazy(() => import('./components/ExportDialog'));
+const ProjectMenu = lazy(() => import('./components/ProjectMenu'));
 
 const App: React.FC = () => {
   const { clips, addClips } = useTimelineStore();
@@ -159,7 +161,9 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-4" style={{ WebkitAppRegion: 'no-drag' }}>
-          <ProjectMenu />
+          <Suspense fallback={<div className="text-gray-400 text-sm">Loading...</div>}>
+            <ProjectMenu />
+          </Suspense>
           <button
             onClick={() => setShowExportDialog(true)}
             disabled={clips.length === 0 || isExporting}
@@ -209,10 +213,14 @@ const App: React.FC = () => {
       )}
 
       {/* Export Dialog */}
-      <ExportDialog 
-        isOpen={showExportDialog} 
-        onClose={() => setShowExportDialog(false)} 
-      />
+      <Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-gray-800 rounded-lg p-6 text-white">Loading export dialog...</div>
+      </div>}>
+        <ExportDialog 
+          isOpen={showExportDialog} 
+          onClose={() => setShowExportDialog(false)} 
+        />
+      </Suspense>
     </div>
   );
 };

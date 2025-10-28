@@ -10,9 +10,36 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html')
+      },
+      output: {
+        manualChunks: {
+          // Vendor chunks
+          'react-vendor': ['react', 'react-dom'],
+          'fabric-vendor': ['fabric'],
+          'zustand-vendor': ['zustand'],
+          
+          // Feature chunks
+          'timeline': [
+            './src/renderer/components/Timeline.tsx',
+            './src/renderer/store/timelineStore.ts'
+          ],
+          'video': [
+            './src/renderer/components/VideoPreview.tsx',
+            './src/renderer/components/MediaLibrary.tsx'
+          ],
+          'export': [
+            './src/renderer/components/ExportDialog.tsx',
+            './src/renderer/store/exportStore.ts'
+          ],
+          'project': [
+            './src/renderer/components/ProjectMenu.tsx',
+            './src/renderer/store/projectStore.ts'
+          ]
+        }
       }
     },
-    target: 'esnext'
+    target: 'esnext',
+    chunkSizeWarningLimit: 1000
   },
   resolve: {
     alias: {
