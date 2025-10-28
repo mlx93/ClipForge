@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTimelineStore } from '../store/timelineStore';
 import { useExportStore } from '../store/exportStore';
 import { ExportSettings } from '@shared/types';
@@ -23,6 +23,8 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
     outputPath: '',
     resolution: RESOLUTION_OPTIONS[1], // Default to 720p
   });
+  const [previewThumbnail, setPreviewThumbnail] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const handleExport = async () => {
     if (!settings.outputPath) {

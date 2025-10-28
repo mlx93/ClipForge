@@ -2,9 +2,13 @@ import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import { join } from 'path';
 import { isDev } from './utils';
 import { setupIpcHandlers } from './ipc/handlers';
+import { createApplicationMenu } from './menu';
 
 // Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;
+
+// Export function to get main window (for menu callbacks)
+export const getMainWindow = (): BrowserWindow | null => mainWindow;
 
 const createWindow = (): void => {
   // Create the browser window
@@ -54,7 +58,10 @@ const createWindow = (): void => {
 app.whenReady().then(() => {
   createWindow();
   setupIpcHandlers(mainWindow!);
-  createMenu();
+  
+  // Set up application menu
+  const menu = createApplicationMenu();
+  Menu.setApplicationMenu(menu);
 
   app.on('activate', () => {
     // On macOS, re-create window when dock icon is clicked
@@ -79,100 +86,3 @@ app.on('web-contents-created', (_, contents) => {
   });
 });
 
-const createMenu = (): void => {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Import Videos...',
-          accelerator: 'CmdOrCtrl+I',
-          click: () => {
-            dialog.showOpenDialog(mainWindow!, {
-              properties: ['openFile', 'multiSelections'],
-              filters: [
-                {
-                  name: 'Video Files',
-                  extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm']
-                }
-              ]
-            }).then(result => {
-              if (!result.canceled && result.filePaths.length > 0) {
-                mainWindow?.webContents.send('import-videos', result.filePaths);
-              }
-            });
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Export...',
-          accelerator: 'CmdOrCtrl+E',
-          click: () => {
-            mainWindow?.webContents.send('trigger-export');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Quit',
-          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
-          click: () => {
-            app.quit();
-          }
-        }
-      ]
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
-    },
-    {
-      label: 'Window',
-      submenu: [
-        { role: 'minimize' },
-        { role: 'close' }
-      ]
-    }
-  ];
-
-  // macOS specific menu adjustments
-  if (process.platform === 'darwin') {
-    template.unshift({
-      label: app.getName(),
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    });
-  }
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
-};

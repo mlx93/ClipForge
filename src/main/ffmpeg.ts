@@ -141,3 +141,42 @@ export const getVideoDuration = async (videoPath: string): Promise<number> => {
     });
   });
 };
+
+export const trimVideo = async (
+  inputPath: string,
+  outputPath: string,
+  trimStart: number,
+  trimEnd: number,
+  onProgress?: (progress: number) => void
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const duration = trimEnd - trimStart;
+    
+    ffmpeg(inputPath)
+      .seekInput(trimStart)
+      .duration(duration)
+      .outputOptions([
+        '-c:v libx264',
+        '-c:a aac',
+        '-preset fast',
+        '-crf 23',
+        '-movflags +faststart',
+        '-pix_fmt yuv420p'
+      ])
+      .output(outputPath)
+      .on('progress', (progress) => {
+        if (onProgress) {
+          const percent = Math.round(progress.percent || 0);
+          onProgress(percent);
+        }
+      })
+      .on('error', (error) => {
+        console.error('FFmpeg trim error:', error);
+        reject(new Error(`Video trim failed: ${error.message}`));
+      })
+      .on('end', () => {
+        resolve();
+      })
+      .run();
+  });
+};

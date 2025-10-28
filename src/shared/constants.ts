@@ -46,9 +46,13 @@ export const IPC_CHANNELS = {
   EXPORT_PROGRESS: 'export-progress',
   EXPORT_COMPLETE: 'export-complete',
   GET_VIDEO_METADATA: 'get-video-metadata',
+  TRIM_VIDEO: 'trim-video',
+  TRIM_PROGRESS: 'trim-progress',
   SAVE_PROJECT: 'save-project',
   LOAD_PROJECT: 'load-project',
-  SHOW_SAVE_DIALOG: 'show-save-dialog'
+  SHOW_SAVE_DIALOG: 'show-save-dialog',
+  SHOW_OPEN_DIALOG: 'show-open-dialog',
+  NEW_PROJECT: 'new-project'
 } as const;
 
 // Error messages

@@ -23,6 +23,15 @@ export interface TimelineState {
   zoom: number; // timeline zoom level
 }
 
+export interface Project {
+  name: string;
+  path: string;
+  created: Date;
+  modified: Date;
+  timeline: TimelineState;
+  settings: ProjectSettings;
+}
+
 export interface ProjectState {
   projectPath: string | null;
   isDirty: boolean;

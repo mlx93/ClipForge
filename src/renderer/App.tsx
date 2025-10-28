@@ -2,17 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { useTimelineStore } from './store/timelineStore';
 import { useExportStore } from './store/exportStore';
 import { useMediaLibraryStore } from './store/mediaLibraryStore';
+import { useProjectStore } from './store/projectStore';
 import ImportZone from './components/ImportZone';
 import MediaLibrary from './components/MediaLibrary';
 import Timeline from './components/Timeline';
 import VideoPreview from './components/VideoPreview';
 import ExportDialog from './components/ExportDialog';
+import ProjectMenu from './components/ProjectMenu';
 import { Clip } from '@shared/types';
 
 const App: React.FC = () => {
   const { clips, addClips } = useTimelineStore();
   const { isExporting, showExportDialog, setShowExportDialog } = useExportStore();
   const { clips: mediaLibraryClips, setClips } = useMediaLibraryStore();
+  const { setDirty } = useProjectStore();
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -25,16 +28,70 @@ const App: React.FC = () => {
       setShowExportDialog(true);
     };
 
+    // Menu event handlers
+    const handleMenuNewProject = () => {
+      // Trigger new project from ProjectMenu
+      const newProjectButton = document.querySelector('[data-menu-action="new-project"]') as HTMLButtonElement;
+      newProjectButton?.click();
+    };
+
+    const handleMenuOpenProject = () => {
+      // Trigger open project from ProjectMenu
+      const openProjectButton = document.querySelector('[data-menu-action="open-project"]') as HTMLButtonElement;
+      openProjectButton?.click();
+    };
+
+    const handleMenuSaveProject = () => {
+      // Trigger save project from ProjectMenu
+      const saveProjectButton = document.querySelector('[data-menu-action="save-project"]') as HTMLButtonElement;
+      saveProjectButton?.click();
+    };
+
+    const handleMenuSaveProjectAs = () => {
+      // Trigger save as project from ProjectMenu
+      const saveAsProjectButton = document.querySelector('[data-menu-action="save-project-as"]') as HTMLButtonElement;
+      saveAsProjectButton?.click();
+    };
+
+    const handleMenuImportVideos = () => {
+      // Trigger import videos
+      const importButton = document.querySelector('[data-menu-action="import-videos"]') as HTMLButtonElement;
+      importButton?.click();
+    };
+
+    const handleMenuExportVideo = () => {
+      setShowExportDialog(true);
+    };
+
     // Register IPC listeners
     window.electronAPI.onImportVideos(handleImportVideos);
     window.electronAPI.onTriggerExport(handleTriggerExport);
+
+    // Register menu event listeners
+    window.electronAPI.on('menu-new-project', handleMenuNewProject);
+    window.electronAPI.on('menu-open-project', handleMenuOpenProject);
+    window.electronAPI.on('menu-save-project', handleMenuSaveProject);
+    window.electronAPI.on('menu-save-project-as', handleMenuSaveProjectAs);
+    window.electronAPI.on('menu-import-videos', handleMenuImportVideos);
+    window.electronAPI.on('menu-export-video', handleMenuExportVideo);
 
     // Cleanup listeners on unmount
     return () => {
       window.electronAPI.removeAllListeners('import-videos');
       window.electronAPI.removeAllListeners('trigger-export');
+      window.electronAPI.removeAllListeners('menu-new-project');
+      window.electronAPI.removeAllListeners('menu-open-project');
+      window.electronAPI.removeAllListeners('menu-save-project');
+      window.electronAPI.removeAllListeners('menu-save-project-as');
+      window.electronAPI.removeAllListeners('menu-import-videos');
+      window.electronAPI.removeAllListeners('menu-export-video');
     };
   }, []);
+
+  // Mark project as dirty when timeline changes
+  useEffect(() => {
+    setDirty(true);
+  }, [clips, setDirty]);
 
   const handleImportFiles = async (filePaths: string[]) => {
     if (filePaths.length === 0) return;
@@ -101,7 +158,8 @@ const App: React.FC = () => {
           <span className="text-sm text-gray-400">v1.0.0</span>
         </div>
         
-        <div className="flex items-center space-x-2" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="flex items-center space-x-4" style={{ WebkitAppRegion: 'no-drag' }}>
+          <ProjectMenu />
           <button
             onClick={() => setShowExportDialog(true)}
             disabled={clips.length === 0 || isExporting}
