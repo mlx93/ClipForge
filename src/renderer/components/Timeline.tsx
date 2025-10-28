@@ -21,6 +21,8 @@ const Timeline: React.FC = () => {
   const [tempTrimEnd, setTempTrimEnd] = React.useState<number | null>(null);
   const [isTrimming, setIsTrimming] = React.useState(false);
   const [trimHandlePositions, setTrimHandlePositions] = React.useState<Record<string, { left: number; right: number }>>({});
+  const [isApplyingTrim, setIsApplyingTrim] = React.useState(false);
+  const [trimProgress, setTrimProgress] = React.useState<number>(0);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -52,6 +54,20 @@ const Timeline: React.FC = () => {
     }
   };
 
+  // Listen for trim progress updates
+  React.useEffect(() => {
+    const handleTrimProgress = (progress: { progress: number; currentStep: string }) => {
+      setTrimProgress(progress.progress);
+      console.log('Trim progress:', progress);
+    };
+    
+    window.electronAPI.onTrimProgress(handleTrimProgress);
+    
+    return () => {
+      window.electronAPI.removeAllListeners('trim-progress');
+    };
+  }, []);
+
   // Apply or cancel trim
   const applyTrim = async () => {
     console.log('Apply trim called with:', { 
@@ -82,12 +98,14 @@ const Timeline: React.FC = () => {
         trimStart, 
         trimEnd 
       });
+      alert('Error: Missing trim data. Please drag the trim handles first.');
       return;
     }
     
     const clip = clips.find(c => c.id === selectedClipId);
     if (!clip) {
       console.error('Apply trim failed: Clip not found', { selectedClipId, availableClips: clips.map(c => c.id) });
+      alert('Error: Clip not found.');
       return;
     }
     
@@ -100,12 +118,17 @@ const Timeline: React.FC = () => {
     });
     
     try {
+      // Set processing state
+      setIsApplyingTrim(true);
+      setTrimProgress(0);
+      
       // Create output path for trimmed video
       const originalPath = clip.path;
       const pathParts = originalPath.split('.');
       const extension = pathParts.pop();
       const basePath = pathParts.join('.');
-      const outputPath = `${basePath}_trimmed.${extension}`;
+      const timestamp = Date.now();
+      const outputPath = `${basePath}_trimmed_${timestamp}.${extension}`;
       
       console.log('Trim paths:', { originalPath, outputPath });
       console.log('Trim validation:', { 
@@ -117,7 +140,7 @@ const Timeline: React.FC = () => {
       
       // Validate trim values
       if (trimStart < 0 || trimEnd <= trimStart || trimEnd > clip.duration) {
-        throw new Error(`Invalid trim values: start=${trimStart}, end=${trimEnd}, duration=${clip.duration}`);
+        throw new Error(`Invalid trim values: start=${trimStart.toFixed(2)}s, end=${trimEnd.toFixed(2)}s, duration=${clip.duration.toFixed(2)}s`);
       }
       
       // Show progress indicator
@@ -136,8 +159,8 @@ const Timeline: React.FC = () => {
       if (result.success) {
         // Update the clip with new trim values and new path
         useTimelineStore.getState().updateClip(selectedClipId, {
-          trimStart: trimStart,
-          trimEnd: trimEnd,
+          trimStart: 0,  // Reset to 0 since we've created a new trimmed file
+          trimEnd: 0,    // Reset to 0 since the new file is already trimmed
           path: result.outputPath!,
           duration: trimEnd - trimStart
         });
@@ -145,7 +168,7 @@ const Timeline: React.FC = () => {
         // Recalculate total duration after trim
         const updatedClips = clips.map(c => 
           c.id === selectedClipId 
-            ? { ...c, trimStart: trimStart, trimEnd: trimEnd, path: result.outputPath!, duration: trimEnd - trimStart }
+            ? { ...c, trimStart: 0, trimEnd: 0, path: result.outputPath!, duration: trimEnd - trimStart }
             : c
         );
         
@@ -160,16 +183,23 @@ const Timeline: React.FC = () => {
         setTempTrimStart(null);
         setTempTrimEnd(null);
         setIsTrimming(false);
+        setIsApplyingTrim(false);
+        setTrimProgress(0);
         
-        console.log('Trim applied successfully, new total duration:', newTotalDuration);
-        alert('Trim applied successfully!');
+        const newDuration = trimEnd - trimStart;
+        console.log('Trim applied successfully, new clip duration:', newDuration, 'new total duration:', newTotalDuration);
+        alert(`✓ Trim applied successfully!\n\nNew clip duration: ${formatTime(newDuration)}\nFile saved to: ${result.outputPath}`);
       } else {
         console.error('Trim failed:', result.error);
-        alert(`Trim failed: ${result.error}`);
+        setIsApplyingTrim(false);
+        setTrimProgress(0);
+        alert(`✗ Trim failed: ${result.error}`);
       }
     } catch (error) {
       console.error('Trim error:', error);
-      alert(`Trim failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsApplyingTrim(false);
+      setTrimProgress(0);
+      alert(`✗ Trim failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -253,7 +283,16 @@ const Timeline: React.FC = () => {
   }, []);
 
   useLayoutEffect(() => {
+    // Skip canvas re-render if user is dragging trim handles
+    if (isDraggingRef.current) {
+      console.log('Skipping canvas re-render during drag - main effect');
+      return;
+    }
+    
     if (!canvasRef.current) return;
+
+    // Define handleWidth at the top of the effect
+    const handleWidth = 8;
 
     // Initialize or get existing canvas
     if (!fabricCanvasRef.current) {
@@ -267,8 +306,10 @@ const Timeline: React.FC = () => {
         console.log('Canvas clicked!', { target: event.target, pointer: canvas.getPointer(event.e) });
         if (!event.target) {
           const pointer = canvas.getPointer(event.e);
-          const currentTotalDuration = useTimelineStore.getState().totalDuration;
-          const clickedTime = (pointer.x / (canvas.width! * zoom)) * currentTotalDuration;
+          const currentState = useTimelineStore.getState();
+          const currentZoom = currentState.zoom;
+          const currentTotalDuration = currentState.totalDuration;
+          const clickedTime = (pointer.x / (canvas.width! * currentZoom)) * currentTotalDuration;
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
           console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
           
@@ -290,8 +331,9 @@ const Timeline: React.FC = () => {
             setSelectedClip(target.clipId);
             // Start trim mode when clicking on a clip
             setIsTrimming(true);
-            // Initialize trim values for the selected clip
-            const clip = clips.find(c => c.id === target.clipId);
+            // Initialize trim values for the selected clip - get fresh state
+            const currentClips = useTimelineStore.getState().clips;
+            const clip = currentClips.find(c => c.id === target.clipId);
             if (clip) {
               setTempTrimStart(clip.trimStart);
               setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
@@ -303,7 +345,8 @@ const Timeline: React.FC = () => {
             console.log('Selected clip and started trim mode:', target.clipId);
           } else if (target.isTrimHandle) {
             // Clicking on trim handle should start trim mode
-            const clip = clips.find(c => c.id === target.clipId);
+            const currentClips = useTimelineStore.getState().clips;
+            const clip = currentClips.find(c => c.id === target.clipId);
             if (clip) {
               setSelectedClip(target.clipId);
               setIsTrimming(true);
@@ -329,7 +372,13 @@ const Timeline: React.FC = () => {
         // Set dragging flag to prevent canvas re-render
         isDraggingRef.current = true;
         
-        const clip = clips.find(c => c.id === target.clipId);
+        // Get fresh state from store
+        const currentState = useTimelineStore.getState();
+        const currentClips = currentState.clips;
+        const currentZoom = currentState.zoom;
+        const currentTotalDuration = currentState.totalDuration;
+        
+        const clip = currentClips.find(c => c.id === target.clipId);
         if (!clip) return;
 
         // Pause video when starting to drag trim handles
@@ -343,27 +392,13 @@ const Timeline: React.FC = () => {
         setSelectedClip(target.clipId);
         console.log('Setting isTrimming to true for clip:', target.clipId);
         setIsTrimming(true);
-        
-        // Initialize trim values if they're null
-        if (tempTrimStart === null || tempTrimEnd === null) {
-          const clip = clips.find(c => c.id === target.clipId);
-          if (clip) {
-            setTempTrimStart(clip.trimStart);
-            setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
-            console.log('Initialized trim values in moving:', { 
-              tempTrimStart: clip.trimStart, 
-              tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
-            });
-          }
-        }
 
-        const currentTotalDuration = useTimelineStore.getState().totalDuration;
         const newX = target.left + target.width / 2; // Center of handle
-        const newTime = (newX / (canvas.width! * zoom)) * currentTotalDuration;
+        const newTime = (newX / (canvas.width! * currentZoom)) * currentTotalDuration;
 
         // Find clip's start time on timeline
         let clipStartTime = 0;
-        for (const c of clips) {
+        for (const c of currentClips) {
           if (c.id === clip.id) break;
           const clipDuration = c.trimEnd > 0 ? c.trimEnd - c.trimStart : c.duration - c.trimStart;
           clipStartTime += clipDuration;
@@ -379,12 +414,17 @@ const Timeline: React.FC = () => {
           const relativeTime = newTime - clipStartTime;
           const newTrimStart = Math.max(0, Math.min(relativeTime, clip.duration));
           setTempTrimStart(newTrimStart);
-          if (tempTrimEnd === null) {
-            setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
-          }
+          
+          // Ensure trimEnd is also set
+          setTempTrimEnd((prev) => {
+            if (prev === null) {
+              return clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
+            }
+            return prev;
+          });
+          
           console.log('Left trim handle update:', { 
             newTrimStart, 
-            tempTrimEnd, 
             clipDuration: clip.duration,
             relativeTime,
             clipStartTime
@@ -395,13 +435,13 @@ const Timeline: React.FC = () => {
           setPlayhead(newPlayheadTime);
           
           // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * zoom;
+          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * currentZoom;
           const objects = canvas.getObjects();
-          const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line');
-          const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
+          const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line') as fabric.Line;
+          const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle') as fabric.Triangle;
           
           if (playheadLine) {
-            playheadLine.set({ x1: playheadX, x2: playheadX });
+            (playheadLine as any).set({ x1: playheadX, x2: playheadX });
           }
           if (playheadTriangle) {
             playheadTriangle.set({ left: playheadX - 6 });
@@ -420,12 +460,17 @@ const Timeline: React.FC = () => {
           const relativeTime = newTime - clipStartTime;
           const newTrimEnd = Math.max(0, Math.min(relativeTime, clip.duration));
           setTempTrimEnd(newTrimEnd);
-          if (tempTrimStart === null) {
-            setTempTrimStart(clip.trimStart);
-          }
+          
+          // Ensure trimStart is also set
+          setTempTrimStart((prev) => {
+            if (prev === null) {
+              return clip.trimStart;
+            }
+            return prev;
+          });
+          
           console.log('Right trim handle update:', { 
             newTrimEnd, 
-            tempTrimStart, 
             clipDuration: clip.duration,
             relativeTime,
             clipStartTime
@@ -436,13 +481,13 @@ const Timeline: React.FC = () => {
           setPlayhead(newPlayheadTime);
           
           // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * zoom;
+          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * currentZoom;
           const objects = canvas.getObjects();
-          const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line');
-          const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
+          const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line') as fabric.Line;
+          const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle') as fabric.Triangle;
           
           if (playheadLine) {
-            playheadLine.set({ x1: playheadX, x2: playheadX });
+            (playheadLine as any).set({ x1: playheadX, x2: playheadX });
           }
           if (playheadTriangle) {
             playheadTriangle.set({ left: playheadX - 6 });
@@ -489,7 +534,8 @@ const Timeline: React.FC = () => {
             canvas.setCursor('pointer');
             // Lighten clip color on hover
             if (target.type === 'rect' && !target.isTrimHandle) {
-              target.set('fill', selectedClipId === target.clipId ? '#2563eb' : '#60a5fa');
+              const currentSelectedId = useTimelineStore.getState().selectedClipId;
+              target.set('fill', currentSelectedId === target.clipId ? '#2563eb' : '#60a5fa');
               canvas.renderAll();
             }
           }
@@ -500,7 +546,8 @@ const Timeline: React.FC = () => {
         const target = event.target as any;
         if (target && target.clipId && target.type === 'rect' && !target.isTrimHandle) {
           // Restore original clip color
-          target.set('fill', selectedClipId === target.clipId ? '#1e40af' : '#3b82f6');
+          const currentSelectedId = useTimelineStore.getState().selectedClipId;
+          target.set('fill', currentSelectedId === target.clipId ? '#1e40af' : '#3b82f6');
           canvas.renderAll();
         }
         canvas.setCursor('default');
@@ -794,20 +841,37 @@ const Timeline: React.FC = () => {
                       <span className="text-sm text-yellow-400 font-medium">
                         Trimming: {selectedClipId ? clips.find(c => c.id === selectedClipId)?.name : 'Unknown'}
                       </span>
-                      <button
-                        onClick={applyTrim}
-                        className="bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded text-sm font-medium shadow-md border border-green-600"
-                        title="Apply trim - this will permanently trim the video"
-                      >
-                        ✓ Apply Trim
-                      </button>
-                      <button
-                        onClick={cancelTrim}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium shadow-lg border-2 border-red-500"
-                        title="Cancel trim - discard changes"
-                      >
-                        ✕ Cancel
-                      </button>
+                      {isApplyingTrim ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium">
+                            Processing... {trimProgress}%
+                          </div>
+                          <div className="w-32 h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-500 transition-all duration-300" 
+                              style={{ width: `${trimProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={applyTrim}
+                            disabled={tempTrimStart === null || tempTrimEnd === null}
+                            className="bg-green-700 hover:bg-green-800 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded text-sm font-medium shadow-md border border-green-600"
+                            title="Apply trim - this will permanently trim the video"
+                          >
+                            ✓ Apply Trim
+                          </button>
+                          <button
+                            onClick={cancelTrim}
+                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium shadow-lg border-2 border-red-500"
+                            title="Cancel trim - discard changes"
+                          >
+                            ✕ Cancel
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                   
