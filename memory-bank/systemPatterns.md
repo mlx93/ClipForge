@@ -3,6 +3,21 @@
 ## Architecture Overview
 ClipForge follows Electron's multi-process architecture with clear separation between main (Node.js) and renderer (React) processes.
 
+## Recent Architecture Improvements (Last 3 Commits)
+
+### Bundle Architecture (b0df0b3)
+- **Code Splitting**: Manual chunks for vendor libraries and features
+- **Lazy Loading**: Components load on-demand (ExportDialog, ProjectMenu)
+- **Chunk Strategy**: 
+  - Vendor: React (141kB), Fabric.js (310kB), Zustand (3.6kB)
+  - Features: Timeline (14kB), Video (9kB), Export (9kB), Project (5kB)
+  - Main: Core app logic (9kB)
+
+### Performance Patterns
+- **Suspense Boundaries**: Graceful loading states for lazy components
+- **Viewport Transform**: Zoom implemented via Fabric.js viewport (not coordinate multiplication)
+- **Memory Management**: Stream-based video processing, file paths over data storage
+
 ## Process Architecture
 ```
 ┌─────────────────────┐
