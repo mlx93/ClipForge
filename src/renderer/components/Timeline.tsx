@@ -21,47 +21,6 @@ const Timeline: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Trim handle functions
-  const handleTrimStart = (handle: any, event: any) => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    canvas.isDragging = true;
-    canvas.draggingHandle = handle;
-    canvas.setCursor('ew-resize');
-  };
-
-  const handleTrimDrag = (handle: any, event: any) => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    const pointer = canvas.getPointer(event.e);
-    const currentTotalDuration = useTimelineStore.getState().totalDuration;
-    const newTime = (pointer.x / canvas.width!) * currentTotalDuration;
-
-    // Find the clip being trimmed
-    const clip = clips.find(c => c.id === handle.clipId);
-    if (!clip) return;
-
-    // Calculate current clip position on timeline
-    let clipStartTime = 0;
-    for (const c of clips) {
-      if (c.id === clip.id) break;
-      const clipDuration = c.trimEnd > 0 ? c.trimEnd - c.trimStart : c.duration - c.trimStart;
-      clipStartTime += clipDuration;
-    }
-
-    if (handle.handleType === 'left') {
-      // Trim start
-      const newTrimStart = Math.max(0, Math.min(newTime - clipStartTime, clip.duration));
-      useTimelineStore.getState().updateClip(clip.id, { trimStart: newTrimStart });
-    } else if (handle.handleType === 'right') {
-      // Trim end
-      const newTrimEnd = Math.max(0, Math.min(newTime - clipStartTime, clip.duration));
-      useTimelineStore.getState().updateClip(clip.id, { trimEnd: newTrimEnd });
-    }
-  };
-
   // Split clip at current playhead
   const splitClipAtPlayhead = () => {
     if (!selectedClipId) return;
@@ -137,12 +96,11 @@ const Timeline: React.FC = () => {
         selection: false,
       });
 
-      // Handle clicks - update Zustand state directly
+      // Handle clicks and object interactions
       canvas.on('mouse:down', (event) => {
         console.log('Canvas clicked!', { target: event.target, pointer: canvas.getPointer(event.e) });
         if (!event.target) {
           const pointer = canvas.getPointer(event.e);
-          // Get current totalDuration from store at click time
           const currentTotalDuration = useTimelineStore.getState().totalDuration;
           const clickedTime = (pointer.x / canvas.width!) * currentTotalDuration;
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
@@ -151,29 +109,80 @@ const Timeline: React.FC = () => {
         } else {
           console.log('Clicked on object:', event.target);
           const target = event.target as any;
-          if (target.clipId) {
-            if (target.isTrimHandle) {
-              // Handle trim handle dragging
-              handleTrimStart(target, event);
-            } else {
-              // Select clip
-              setSelectedClip(target.clipId);
+          if (target.clipId && !target.isTrimHandle) {
+            setSelectedClip(target.clipId);
+          }
+        }
+      });
+
+      // Handle trim handle dragging
+      canvas.on('object:moving', (event) => {
+        const target = event.target as any;
+        if (target && target.isTrimHandle) {
+          const clip = clips.find(c => c.id === target.clipId);
+          if (!clip) return;
+
+          const currentTotalDuration = useTimelineStore.getState().totalDuration;
+          const newX = target.left + target.width / 2; // Center of handle
+          const newTime = (newX / canvas.width!) * currentTotalDuration;
+
+          // Find clip's start time on timeline
+          let clipStartTime = 0;
+          for (const c of clips) {
+            if (c.id === clip.id) break;
+            const clipDuration = c.trimEnd > 0 ? c.trimEnd - c.trimStart : c.duration - c.trimStart;
+            clipStartTime += clipDuration;
+          }
+
+          if (target.handleType === 'left') {
+            // Constrain to clip bounds
+            const minX = target.clipStartX;
+            const maxX = target.clipStartX + target.clipWidth - handleWidth;
+            target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
+
+            // Calculate new trim start
+            const relativeTime = newTime - clipStartTime;
+            const newTrimStart = Math.max(0, Math.min(relativeTime, clip.duration));
+            useTimelineStore.getState().updateClip(clip.id, { trimStart: newTrimStart });
+          } else if (target.handleType === 'right') {
+            // Constrain to clip bounds
+            const minX = target.clipStartX + handleWidth;
+            const maxX = target.clipStartX + target.clipWidth;
+            target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
+
+            // Calculate new trim end
+            const relativeTime = newTime - clipStartTime;
+            const newTrimEnd = Math.max(0, Math.min(relativeTime, clip.duration));
+            useTimelineStore.getState().updateClip(clip.id, { trimEnd: newTrimEnd });
+          }
+        }
+      });
+
+      // Hover feedback on timeline objects
+      canvas.on('mouse:over', (event) => {
+        const target = event.target as any;
+        if (target && target.clipId) {
+          if (target.isTrimHandle) {
+            canvas.setCursor('ew-resize');
+          } else {
+            canvas.setCursor('pointer');
+            // Lighten clip color on hover
+            if (target.type === 'rect' && !target.isTrimHandle) {
+              target.set('fill', selectedClipId === target.clipId ? '#2563eb' : '#60a5fa');
+              canvas.renderAll();
             }
           }
         }
       });
 
-      // Handle mouse move for trim dragging
-      canvas.on('mouse:move', (event) => {
-        if (canvas.isDragging && canvas.draggingHandle) {
-          handleTrimDrag(canvas.draggingHandle, event);
+      canvas.on('mouse:out', (event) => {
+        const target = event.target as any;
+        if (target && target.clipId && target.type === 'rect' && !target.isTrimHandle) {
+          // Restore original clip color
+          target.set('fill', selectedClipId === target.clipId ? '#1e40af' : '#3b82f6');
+          canvas.renderAll();
         }
-      });
-
-      // Handle mouse up to stop dragging
-      canvas.on('mouse:up', () => {
-        canvas.isDragging = false;
-        canvas.draggingHandle = null;
+        canvas.setCursor('default');
       });
 
       fabricCanvasRef.current = canvas;
@@ -279,7 +288,7 @@ const Timeline: React.FC = () => {
 
         // Left trim handle (only for selected clip)
         if (selectedClipId === clip.id) {
-          canvas.add(new fabric.Rect({
+          const leftHandle = new fabric.Rect({
             left: clipX - handleWidth/2,
             top: clipY,
             width: handleWidth,
@@ -287,15 +296,21 @@ const Timeline: React.FC = () => {
             fill: '#ef4444',
             stroke: '#dc2626',
             strokeWidth: 1,
-            selectable: false,
-            evented: true,
+            selectable: true,
+            lockMovementY: true,
+            hasControls: false,
+            hasBorders: false,
             clipId: clip.id,
             isTrimHandle: true,
             handleType: 'left',
-          } as any));
+            clipStartX: clipX,
+            clipWidth: clipWidth,
+          } as any);
+          
+          canvas.add(leftHandle);
 
           // Right trim handle
-          canvas.add(new fabric.Rect({
+          const rightHandle = new fabric.Rect({
             left: clipX + clipWidth - handleWidth/2,
             top: clipY,
             width: handleWidth,
@@ -303,12 +318,18 @@ const Timeline: React.FC = () => {
             fill: '#ef4444',
             stroke: '#dc2626',
             strokeWidth: 1,
-            selectable: false,
-            evented: true,
+            selectable: true,
+            lockMovementY: true,
+            hasControls: false,
+            hasBorders: false,
             clipId: clip.id,
             isTrimHandle: true,
             handleType: 'right',
-          } as any));
+            clipStartX: clipX,
+            clipWidth: clipWidth,
+          } as any);
+          
+          canvas.add(rightHandle);
         }
 
         // Clip text
