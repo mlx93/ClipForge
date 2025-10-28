@@ -1,15 +1,31 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTimelineStore } from '../store/timelineStore';
+import { Clip } from '@shared/types';
+
+interface ClipInfo {
+  clip: Clip;
+  clipStartTime: number;
+  clipDuration: number;
+}
 
 const VideoPreview: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { clips, playhead, selectedClipId, totalDuration } = useTimelineStore();
+  
+  // Video element readiness tracking
+  const videoReadyStateRef = useRef<'loading' | 'canplay' | 'error'>('loading');
+  const pendingPlayRef = useRef<boolean>(false);
+  const playbackAnimationFrameRef = useRef<number | null>(null);
+  
+  // Only subscribe to the state we actually need
+  const { clips, playhead, totalDuration } = useTimelineStore();
+  
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [hasError, setHasError] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState('');
 
-  // Get the current clip based on playhead position and its start time
-  const getCurrentClipInfo = () => {
+  // DERIVED STATE: Calculate during render, not in useEffect
+  // This is pure computation from props/state - no need for useEffect
+  const currentClipInfo = useMemo((): ClipInfo | null => {
     if (clips.length === 0) return null;
     
     let currentTime = 0;
@@ -41,12 +57,11 @@ const VideoPreview: React.FC = () => {
     }
     
     return null;
-  };
+  }, [clips, playhead]); // Memoize to avoid recalculation on every render
 
-  const currentClipInfo = getCurrentClipInfo();
   const currentClip = currentClipInfo?.clip || null;
 
-  // Update video source when clip changes
+  // EFFECT 1: Manage video source loading and clip transitions
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentClip) return;
@@ -54,16 +69,21 @@ const VideoPreview: React.FC = () => {
     // Reset error state when loading new video
     setHasError(false);
     setErrorMessage('');
+    videoReadyStateRef.current = 'loading';
     
     // Only update source if it's different
     const newSrc = `file://${currentClip.path}`;
     if (video.src !== newSrc) {
+      console.log('[Video Source] Loading new clip:', currentClip.name);
       video.src = newSrc;
       video.load();
+    } else {
+      // Same clip, already loaded
+      videoReadyStateRef.current = 'canplay';
     }
   }, [currentClip]);
 
-  // Sync video time with timeline playhead
+  // EFFECT 2: Sync video currentTime with timeline playhead (when paused or seeking)
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentClip || !currentClipInfo) return;
@@ -71,97 +91,243 @@ const VideoPreview: React.FC = () => {
     const timeInClip = playhead - currentClipInfo.clipStartTime;
     const videoTime = currentClip.trimStart + timeInClip;
     
-    console.log('Syncing video to timeline:', {
-      playhead,
-      clipStartTime: currentClipInfo.clipStartTime,
-      timeInClip,
-      videoTime,
-      currentVideoTime: video.currentTime,
-      difference: Math.abs(video.currentTime - videoTime)
-    });
+    // Only seek if:
+    // 1. Video is paused (user is scrubbing timeline)
+    // 2. OR difference is significant (avoid micro-adjustments during playback)
+    const timeDiff = Math.abs(video.currentTime - videoTime);
     
-    // Only seek if the difference is significant to avoid constant seeking
-    // Also check if video is not currently playing to avoid conflicts
-    if (Math.abs(video.currentTime - videoTime) > 0.05 && video.paused) {
+    if (video.paused && timeDiff > 0.05) {
+      console.log('[Playhead Sync] Seeking video:', {
+        playhead,
+        videoTime,
+        currentVideoTime: video.currentTime,
+        difference: timeDiff
+      });
       video.currentTime = videoTime;
     }
   }, [playhead, currentClip, currentClipInfo]);
 
-  // Sync timeline playhead when video is playing
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !currentClip || !currentClipInfo || !isPlaying) return;
-
-    const interval = setInterval(() => {
-      if (video.paused) return;
-
-      const timelineTime = currentClipInfo.clipStartTime + (video.currentTime - currentClip.trimStart);
-      
-      console.log('Syncing timeline to video:', {
-        videoCurrentTime: video.currentTime,
-        clipStartTime: currentClipInfo.clipStartTime,
-        timelineTime,
-        currentPlayhead: playhead
-      });
-      
-      // Only update if the difference is significant to avoid constant updates
-      if (Math.abs(timelineTime - playhead) > 0.1) {
-        useTimelineStore.getState().setPlayhead(timelineTime);
+  // VIDEO EVENT HANDLERS - Define these first so they can be used in effects
+  
+  const handleCanPlay = useCallback(() => {
+    console.log('[Video Ready] Video can play');
+    videoReadyStateRef.current = 'canplay';
+    
+    // If there's a pending play request, fulfill it now
+    if (pendingPlayRef.current) {
+      const video = videoRef.current;
+      if (video) {
+        console.log('[Video Ready] Fulfilling pending play request');
+        video.play()
+          .then(() => {
+            console.log('[Video Ready] Play promise resolved successfully');
+            // Ensure isPlaying state is correct
+            setIsPlaying(true);
+          })
+          .catch(err => {
+            console.error('[Play Error] Failed to play after load:', err);
+            setIsPlaying(false);
+          });
       }
-    }, 100); // Update every 100ms for smooth playback
+      pendingPlayRef.current = false;
+    }
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [isPlaying, currentClip, currentClipInfo, playhead]);
-
-  // Handle video events
-  const handlePlay = () => {
+  const handlePlay = useCallback(() => {
+    console.log('[Video Event] Play started');
     setIsPlaying(true);
-  };
+    pendingPlayRef.current = false;
+  }, []);
 
-  const handlePause = () => {
+  const handlePause = useCallback(() => {
+    console.log('[Video Event] Paused');
     setIsPlaying(false);
-  };
+  }, []);
 
-  const handleEnded = () => {
-    // When current clip ends, move to next clip if available
+  const handleEnded = useCallback(() => {
+    console.log('[Video Event] Current clip ended');
+    
     if (!currentClipInfo) return;
     
     const currentClipIndex = clips.findIndex(c => c.id === currentClip?.id);
     if (currentClipIndex < clips.length - 1) {
-      // Move playhead to start of next clip
+      // There's a next clip - transition to it
       const nextClipStartTime = currentClipInfo.clipStartTime + currentClipInfo.clipDuration;
-      useTimelineStore.getState().setPlayhead(nextClipStartTime + 0.001); // Minimal offset to trigger new clip
       
-      // Resume playing with minimal delay for seamless transition
-      setTimeout(() => {
-        const video = videoRef.current;
-        if (video) {
-          video.play().catch(err => console.error('Play error:', err));
-        }
-      }, 2); // Reduced to 2ms for near-seamless playback
+      console.log('[Clip Transition] Moving to next clip:', {
+        currentClipIndex,
+        nextClipIndex: currentClipIndex + 1,
+        nextClipStartTime
+      });
+      
+      // Update playhead to start of next clip
+      // This will trigger the clip change via useMemo recalculation
+      useTimelineStore.getState().setPlayhead(nextClipStartTime + 0.001);
+      
+      // Mark that we want to play the next clip
+      pendingPlayRef.current = true;
+      
+      // The video source will change via useEffect when currentClipInfo updates
+      // Then handleCanPlay will automatically resume playback
     } else {
-      // End of timeline - pause
+      // End of timeline - stop playback
+      console.log('[Playback Complete] Reached end of timeline');
       setIsPlaying(false);
       useTimelineStore.getState().setPlayhead(totalDuration);
     }
-  };
+  }, [clips, currentClip, currentClipInfo, totalDuration]);
 
-  const handleError = () => {
+  const handleError = useCallback(() => {
+    console.error('[Video Error] Failed to load:', currentClip?.path);
+    videoReadyStateRef.current = 'error';
     setHasError(true);
     setErrorMessage('Unable to load video. File may be corrupted or unsupported format.');
-    console.error('Video load error:', currentClip?.path);
-  };
+    setIsPlaying(false);
+  }, [currentClip]);
 
-  const togglePlayPause = () => {
+  const togglePlayPause = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (video.paused) {
-      video.play();
+      console.log('[User Action] Play button clicked');
+      
+      // Check if video is ready to play
+      if (videoReadyStateRef.current === 'canplay') {
+        video.play().catch(err => {
+          console.error('[Play Error] Failed to play:', err);
+          setIsPlaying(false);
+        });
+      } else if (videoReadyStateRef.current === 'loading') {
+        // Video still loading, mark as pending
+        console.log('[User Action] Video still loading, pending play');
+        pendingPlayRef.current = true;
+      }
     } else {
+      console.log('[User Action] Pause button clicked');
       video.pause();
     }
-  };
+  }, []);
+
+  // EFFECT 1: Manage video source loading and clip transitions
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !currentClip) return;
+
+    // Reset error state when loading new video
+    setHasError(false);
+    setErrorMessage('');
+    videoReadyStateRef.current = 'loading';
+    
+    // Only update source if it's different
+    const newSrc = `file://${currentClip.path}`;
+    if (video.src !== newSrc) {
+      console.log('[Video Source] Loading new clip:', currentClip.name);
+      video.src = newSrc;
+      video.load();
+    } else {
+      // Same clip, already loaded
+      videoReadyStateRef.current = 'canplay';
+    }
+  }, [currentClip]);
+
+  // EFFECT 2: Sync video currentTime with timeline playhead (when paused or seeking)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !currentClip || !currentClipInfo) return;
+
+    const timeInClip = playhead - currentClipInfo.clipStartTime;
+    const videoTime = currentClip.trimStart + timeInClip;
+    
+    // Only seek if:
+    // 1. Video is paused (user is scrubbing timeline)
+    // 2. OR difference is significant (avoid micro-adjustments during playback)
+    const timeDiff = Math.abs(video.currentTime - videoTime);
+    
+    if (video.paused && timeDiff > 0.05) {
+      console.log('[Playhead Sync] Seeking video:', {
+        playhead,
+        videoTime,
+        currentVideoTime: video.currentTime,
+        difference: timeDiff
+      });
+      video.currentTime = videoTime;
+    }
+  }, [playhead, currentClip, currentClipInfo]);
+
+  // EFFECT 3: Sync timeline playhead with video during playback (using requestAnimationFrame for smoothness)
+  useEffect(() => {
+    const video = videoRef.current;
+    
+    console.log('[RAF Loop] Effect triggered:', {
+      hasVideo: !!video,
+      hasClip: !!currentClip,
+      hasClipInfo: !!currentClipInfo,
+      isPlaying,
+      videoPaused: video?.paused,
+      videoReadyState: video?.readyState
+    });
+    
+    if (!video || !currentClip || !currentClipInfo || !isPlaying) {
+      // Clean up animation frame if not playing
+      if (playbackAnimationFrameRef.current !== null) {
+        console.log('[RAF Loop] Cleaning up - conditions not met');
+        cancelAnimationFrame(playbackAnimationFrameRef.current);
+        playbackAnimationFrameRef.current = null;
+      }
+      return;
+    }
+
+    console.log('[RAF Loop] Starting sync loop for clip:', currentClip.name);
+
+    // Use requestAnimationFrame for smooth 60fps updates instead of setInterval
+    const syncPlayhead = () => {
+      if (!video || video.paused) {
+        console.log('[RAF Loop] Sync skipped - video paused or not available');
+        // Don't stop the loop, just skip this frame
+        playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
+        return;
+      }
+
+      const timelineTime = currentClipInfo.clipStartTime + (video.currentTime - currentClip.trimStart);
+      
+      // Check if we've reached the end of the current clip
+      const clipEndTime = currentClipInfo.clipStartTime + currentClipInfo.clipDuration;
+      const clipEndVideoTime = currentClip.trimEnd > 0 ? currentClip.trimEnd : currentClip.duration;
+      
+      if (timelineTime >= clipEndTime || video.currentTime >= clipEndVideoTime) {
+        // We've reached the end of the current clip - trigger transition
+        console.log('[Clip Boundary] Reached end of clip:', {
+          timelineTime,
+          clipEndTime,
+          videoCurrentTime: video.currentTime,
+          clipEndVideoTime
+        });
+        
+        // Manually trigger the ended handler logic
+        handleEnded();
+        return; // Stop the sync loop, handleEnded will restart if needed
+      }
+      
+      // Update timeline playhead to match video
+      useTimelineStore.getState().setPlayhead(timelineTime);
+      
+      // Schedule next frame
+      playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
+    };
+
+    // Start the sync loop
+    console.log('[RAF Loop] Initial RAF call');
+    playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
+
+    return () => {
+      console.log('[RAF Loop] Cleanup called');
+      if (playbackAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(playbackAnimationFrameRef.current);
+        playbackAnimationFrameRef.current = null;
+      }
+    };
+  }, [isPlaying, currentClip, currentClipInfo, handleEnded]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -197,14 +363,14 @@ const VideoPreview: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+  }, [togglePlayPause]);
 
-  const seekRelative = (seconds: number) => {
-    const newTime = Math.max(0, Math.min(playhead + seconds, useTimelineStore.getState().totalDuration));
+  const seekRelative = useCallback((seconds: number) => {
+    const newTime = Math.max(0, Math.min(playhead + seconds, totalDuration));
     useTimelineStore.getState().setPlayhead(newTime);
-  };
+  }, [playhead, totalDuration]);
 
-  const handleProgressClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleProgressClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!currentClip) return;
 
     const rect = event.currentTarget.getBoundingClientRect();
@@ -214,13 +380,13 @@ const VideoPreview: React.FC = () => {
     // Calculate the new global timeline position
     const newTimelineTime = percentage * totalDuration;
     useTimelineStore.getState().setPlayhead(newTimelineTime);
-  };
+  }, [currentClip, totalDuration]);
 
-  const formatTime = (seconds: number): string => {
+  const formatTime = useCallback((seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
   if (!currentClip) {
     return (
@@ -264,57 +430,82 @@ const VideoPreview: React.FC = () => {
           onPause={handlePause}
           onEnded={handleEnded}
           onError={handleError}
-          preload="metadata"
+          onCanPlay={handleCanPlay}
+          preload="auto"
+          playsInline
           style={{ minHeight: '200px', minWidth: '300px' }}
         />
       </div>
 
-      {/* Controls */}
-      <div className="bg-gray-800 border-t border-gray-700 p-4">
-        <div className="flex items-center gap-4">
-          {/* Play/Pause button - Fixed width */}
-          <button
-            onClick={togglePlayPause}
-            className="text-white hover:text-gray-300 transition-colors flex-shrink-0"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? (
-              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-              </svg>
-            ) : (
-              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            )}
-          </button>
+      {/* Controls - Memoized to prevent re-render when video changes */}
+      <VideoControls
+        isPlaying={isPlaying}
+        playhead={playhead}
+        totalDuration={totalDuration}
+        currentClipName={currentClip?.name || ''}
+        onTogglePlayPause={togglePlayPause}
+        onProgressClick={handleProgressClick}
+        formatTime={formatTime}
+      />
+    </div>
+  );
+};
 
-          {/* Time display - Fixed width */}
-          <div className="flex items-center gap-2 text-sm text-gray-400 flex-shrink-0 w-24">
-            <span className="tabular-nums">{formatTime(playhead)}</span>
-            <span>/</span>
-            <span className="tabular-nums">{formatTime(totalDuration)}</span>
-          </div>
+// Separate Controls component to prevent re-renders when video state changes
+const VideoControls = React.memo<{
+  isPlaying: boolean;
+  playhead: number;
+  totalDuration: number;
+  currentClipName: string;
+  onTogglePlayPause: () => void;
+  onProgressClick: (event: React.MouseEvent<HTMLDivElement>) => void;
+  formatTime: (seconds: number) => string;
+}>(({ isPlaying, playhead, totalDuration, currentClipName, onTogglePlayPause, onProgressClick, formatTime }) => {
+  return (
+    <div className="bg-gray-800 border-t border-gray-700 p-4">
+      <div className="flex items-center gap-4">
+        {/* Play/Pause button - Fixed width */}
+        <button
+          onClick={onTogglePlayPause}
+          className="text-white hover:text-gray-300 transition-colors flex-shrink-0"
+          title={isPlaying ? 'Pause' : 'Play'}
+        >
+          {isPlaying ? (
+            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+            </svg>
+          ) : (
+            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          )}
+        </button>
 
-          {/* Progress bar - Takes remaining space */}
+        {/* Time display - Fixed width with monospace numbers */}
+        <div className="flex items-center gap-2 text-sm text-gray-400 flex-shrink-0 w-24">
+          <span className="tabular-nums">{formatTime(playhead)}</span>
+          <span>/</span>
+          <span className="tabular-nums">{formatTime(totalDuration)}</span>
+        </div>
+
+        {/* Progress bar - Takes remaining space */}
+        <div 
+          className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer relative min-w-0"
+          onClick={onProgressClick}
+        >
           <div 
-            className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer relative min-w-0"
-            onClick={handleProgressClick}
-          >
-            <div 
-              className="bg-blue-500 h-2 rounded-full transition-all duration-100"
-              style={{ width: `${totalDuration > 0 ? (playhead / totalDuration) * 100 : 0}%` }}
-            />
-          </div>
+            className="bg-blue-500 h-2 rounded-full transition-all duration-100"
+            style={{ width: `${totalDuration > 0 ? (playhead / totalDuration) * 100 : 0}%` }}
+          />
+        </div>
 
-          {/* Clip info - Fixed width at the end */}
-          <div className="text-sm text-gray-400 flex-shrink-0 w-48 truncate text-right">
-            {currentClip.name}
-          </div>
+        {/* Clip info - Fixed width at the end */}
+        <div className="text-sm text-gray-400 flex-shrink-0 w-48 truncate text-right">
+          {currentClipName}
         </div>
       </div>
     </div>
   );
-};
+});
 
 export default VideoPreview;

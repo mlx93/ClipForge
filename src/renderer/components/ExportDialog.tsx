@@ -79,7 +79,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
       });
 
       if (!result.canceled && result.filePath) {
-        setSettings(prev => ({ ...prev, outputPath: result.filePath }));
+        setSettings(prev => ({ ...prev, outputPath: result.filePath! }));
       }
     } catch (error) {
       console.error('Failed to select output path:', error);

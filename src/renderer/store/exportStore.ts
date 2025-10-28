@@ -98,7 +98,7 @@ export const useExportStore = create<ExportStore>((set, get) => ({
         estimatedTimeRemaining: 0
       });
       
-      toast.success(`Export complete! Saved to ${outputPath.split('/').pop()}`);
+      toast.success(`Export complete! Saved to ${outputPath?.split('/').pop() || 'file'}`);
       
       // Close dialog immediately when export completes
       set({ showExportDialog: false });

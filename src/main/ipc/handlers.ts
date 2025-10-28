@@ -21,7 +21,6 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
         clips
       };
     } catch (error) {
-      console.error('Import videos error:', error);
       return {
         success: false,
         clips: [],

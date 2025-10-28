@@ -11,7 +11,7 @@ const ImportZone: React.FC<ImportZoneProps> = ({ onImport }) => {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      const filePaths = Array.from(files).map(file => file.path);
+      const filePaths = Array.from(files).map(file => file.path).filter((path): path is string => path !== undefined);
       onImport(filePaths);
     }
   };
@@ -44,7 +44,7 @@ const ImportZone: React.FC<ImportZoneProps> = ({ onImport }) => {
     );
     
     if (videoFiles.length > 0) {
-      const filePaths = videoFiles.map(file => file.path);
+      const filePaths = videoFiles.map(file => file.path).filter((path): path is string => path !== undefined);
       onImport(filePaths);
     }
   };

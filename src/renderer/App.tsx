@@ -116,14 +116,7 @@ const App: React.FC = () => {
       if (response.success) {
         addClips(response.clips);
         setClips([...mediaLibraryClips, ...response.clips]);
-        console.log(`Imported ${response.clips.length} video(s)`);
-      } else {
-        console.error('Import failed:', response.error);
-        // TODO: Show error notification
       }
-    } catch (error) {
-      console.error('Import error:', error);
-      // TODO: Show error notification
     } finally {
       setIsLoading(false);
     }
@@ -142,7 +135,7 @@ const App: React.FC = () => {
     );
     
     if (videoFiles.length > 0) {
-      const filePaths = videoFiles.map(file => file.path);
+      const filePaths = videoFiles.map(file => file.path).filter((path): path is string => path !== undefined);
       handleImportFiles(filePaths);
     }
   };

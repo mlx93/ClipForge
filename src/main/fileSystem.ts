@@ -54,7 +54,6 @@ export const importVideos = async (filePaths: string[]): Promise<Clip[]> => {
 
       clips.push(clip);
     } catch (error) {
-      console.error(`Failed to import ${filePath}:`, error);
       throw new Error(`${ERROR_MESSAGES.IMPORT_FAILED}: ${filePath}`);
     }
   }
@@ -86,7 +85,6 @@ export const getVideoMetadata = async (filePath: string): Promise<VideoMetadata>
       audioChannels: audioStream?.channels
     };
   } catch (error) {
-    console.error('FFprobe error:', error);
     throw new Error(ERROR_MESSAGES.INVALID_FILE);
   }
 };

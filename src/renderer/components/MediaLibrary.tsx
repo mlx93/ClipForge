@@ -66,7 +66,7 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
       const thumbnailUrl = canvas.toDataURL();
       setThumbnails(prev => ({ ...prev, [clip.id]: thumbnailUrl }));
     } catch (error) {
-      console.error('Failed to generate thumbnail:', error);
+      // Silently fail - thumbnail generation is not critical
     }
   };
 
@@ -102,7 +102,6 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
       const [movedClip] = newClips.splice(draggedIndex, 1);
       newClips.splice(dropIndex, 0, movedClip);
       setLocalClips(newClips);
-      console.log('Reordered media library clips:', newClips.map(c => c.name));
     }
     
     setDraggedIndex(null);
@@ -209,7 +208,6 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
                             ...clip,
                             id: `${clip.id}_timeline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
                           };
-                          console.log('Adding clip to timeline:', timelineClip);
                           addClips([timelineClip]);
                         }}
                         className="text-gray-400 hover:text-blue-400 transition-colors p-1"
@@ -223,7 +221,6 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          console.log('Removing clip:', clip.id, clip.name);
                           removeClip(clip.id);
                         }}
                         className="text-gray-400 hover:text-red-400 transition-colors p-1"
