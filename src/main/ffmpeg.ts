@@ -31,7 +31,9 @@ export const exportTimeline = async (
 
     // Add input files with trim points
     clips.forEach((clip, index) => {
-      const input = ffmpeg.input(clip.path);
+      // Sanitize and quote file path to handle spaces and special characters
+      const sanitizedPath = clip.path.replace(/\\/g, '/');
+      const input = ffmpeg.input(sanitizedPath);
       
       // Apply trim points if specified
       if (clip.trimStart > 0 || clip.trimEnd > 0) {
@@ -61,8 +63,8 @@ export const exportTimeline = async (
       ])
       .output(settings.outputPath);
 
-    // Apply resolution scaling if needed
-    if (settings.resolution.name !== 'Source') {
+    // Apply resolution scaling if needed (skip for Source resolution)
+    if (settings.resolution.name !== 'Source' && settings.resolution.width > 0 && settings.resolution.height > 0) {
       command = command.videoFilters([
         `scale=${settings.resolution.width}:${settings.resolution.height}:force_original_aspect_ratio=decrease,pad=${settings.resolution.width}:${settings.resolution.height}:(ow-iw)/2:(oh-ih)/2`
       ]);
@@ -94,7 +96,13 @@ export const exportTimeline = async (
     // Error handling
     command.on('error', (error) => {
       console.error('FFmpeg error:', error);
-      reject(new Error(`Export failed: ${error.message}`));
+      
+      // Check for disk full error (ENOSPC)
+      if (error.message && (error.message.includes('ENOSPC') || error.message.includes('No space left'))) {
+        reject(new Error('Export failed: Not enough disk space. Please free up space and try again.'));
+      } else {
+        reject(new Error(`Export failed: ${error.message}`));
+      }
     });
 
     // Success
@@ -152,7 +160,11 @@ export const trimVideo = async (
   return new Promise((resolve, reject) => {
     const duration = trimEnd - trimStart;
     
-    ffmpeg(inputPath)
+    // Sanitize paths to handle spaces and special characters
+    const sanitizedInputPath = inputPath.replace(/\\/g, '/');
+    const sanitizedOutputPath = outputPath.replace(/\\/g, '/');
+    
+    ffmpeg(sanitizedInputPath)
       .seekInput(trimStart)
       .duration(duration)
       .outputOptions([
@@ -163,7 +175,7 @@ export const trimVideo = async (
         '-movflags +faststart',
         '-pix_fmt yuv420p'
       ])
-      .output(outputPath)
+      .output(sanitizedOutputPath)
       .on('progress', (progress) => {
         if (onProgress) {
           const percent = Math.round(progress.percent || 0);
@@ -172,7 +184,13 @@ export const trimVideo = async (
       })
       .on('error', (error) => {
         console.error('FFmpeg trim error:', error);
-        reject(new Error(`Video trim failed: ${error.message}`));
+        
+        // Check for disk full error (ENOSPC)
+        if (error.message && (error.message.includes('ENOSPC') || error.message.includes('No space left'))) {
+          reject(new Error('Video trim failed: Not enough disk space. Please free up space and try again.'));
+        } else {
+          reject(new Error(`Video trim failed: ${error.message}`));
+        }
       })
       .on('end', () => {
         resolve();

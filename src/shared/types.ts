@@ -13,6 +13,7 @@ export interface Clip {
   trimStart: number; // trim start offset in seconds
   trimEnd: number; // trim end offset in seconds (0 = no trim)
   thumbnailPath?: string; // path to generated thumbnail
+  previousTrimPath?: string; // path to previous trimmed file (for cleanup)
 }
 
 export interface TimelineState {
@@ -55,8 +56,6 @@ export interface Resolution {
 export interface ExportSettings {
   outputPath: string;
   resolution: Resolution;
-  quality: 'low' | 'medium' | 'high';
-  format: 'mp4' | 'mov';
 }
 
 export interface ExportState {

@@ -10,6 +10,18 @@
     "!node_modules/.cache/**/*",
     "!**/*.map"
   ],
+  "extraFiles": [
+    {
+      "from": "node_modules/@ffmpeg-installer/darwin-x64",
+      "to": "Resources/bin",
+      "filter": ["ffmpeg"]
+    },
+    {
+      "from": "node_modules/@ffmpeg-installer/darwin-arm64",
+      "to": "Resources/bin",
+      "filter": ["ffmpeg"]
+    }
+  ],
   "mac": {
     "category": "public.app-category.video",
     "target": [

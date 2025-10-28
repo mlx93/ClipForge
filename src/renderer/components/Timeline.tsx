@@ -1,4 +1,5 @@
 import React, { useRef, useLayoutEffect } from 'react';
+import toast from 'react-hot-toast';
 import { fabric } from 'fabric';
 import { useTimelineStore } from '../store/timelineStore';
 
@@ -98,14 +99,14 @@ const Timeline: React.FC = () => {
         trimStart, 
         trimEnd 
       });
-      alert('Error: Missing trim data. Please drag the trim handles first.');
+      toast.error('Error: Missing trim data. Please drag the trim handles first.');
       return;
     }
     
     const clip = clips.find(c => c.id === selectedClipId);
     if (!clip) {
       console.error('Apply trim failed: Clip not found', { selectedClipId, availableClips: clips.map(c => c.id) });
-      alert('Error: Clip not found.');
+      toast.error('Error: Clip not found.');
       return;
     }
     
@@ -140,6 +141,7 @@ const Timeline: React.FC = () => {
       
       // Validate trim values
       if (trimStart < 0 || trimEnd <= trimStart || trimEnd > clip.duration) {
+        toast.error(`Invalid trim values: start=${trimStart.toFixed(2)}s, end=${trimEnd.toFixed(2)}s, duration=${clip.duration.toFixed(2)}s`);
         throw new Error(`Invalid trim values: start=${trimStart.toFixed(2)}s, end=${trimEnd.toFixed(2)}s, duration=${clip.duration.toFixed(2)}s`);
       }
       
@@ -157,12 +159,23 @@ const Timeline: React.FC = () => {
       console.log('Trim result:', result);
       
       if (result.success) {
+        // Delete previous trimmed file if it exists
+        if (clip.previousTrimPath) {
+          try {
+            await window.electronAPI.deleteFile(clip.previousTrimPath);
+            console.log('Deleted previous trim file:', clip.previousTrimPath);
+          } catch (error) {
+            console.warn('Could not delete previous trim file:', error);
+          }
+        }
+        
         // Update the clip with new trim values and new path
         useTimelineStore.getState().updateClip(selectedClipId, {
           trimStart: 0,  // Reset to 0 since we've created a new trimmed file
           trimEnd: 0,    // Reset to 0 since the new file is already trimmed
           path: result.outputPath!,
-          duration: trimEnd - trimStart
+          duration: trimEnd - trimStart,
+          previousTrimPath: result.outputPath! // Track this for future cleanup
         });
         
         // Recalculate total duration after trim
@@ -188,18 +201,18 @@ const Timeline: React.FC = () => {
         
         const newDuration = trimEnd - trimStart;
         console.log('Trim applied successfully, new clip duration:', newDuration, 'new total duration:', newTotalDuration);
-        alert(`✓ Trim applied successfully!\n\nNew clip duration: ${formatTime(newDuration)}\nFile saved to: ${result.outputPath}`);
+        toast.success(`✓ Trim applied successfully! New duration: ${formatTime(newDuration)}`);
       } else {
         console.error('Trim failed:', result.error);
         setIsApplyingTrim(false);
         setTrimProgress(0);
-        alert(`✗ Trim failed: ${result.error}`);
+        toast.error(`✗ Trim failed: ${result.error}`);
       }
     } catch (error) {
       console.error('Trim error:', error);
       setIsApplyingTrim(false);
       setTrimProgress(0);
-      alert(`✗ Trim failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`✗ Trim failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -227,7 +240,7 @@ const Timeline: React.FC = () => {
     }
   };
 
-  // Keyboard shortcuts for clip reordering
+  // Keyboard shortcuts for clip reordering and deletion
   React.useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
@@ -243,6 +256,15 @@ const Timeline: React.FC = () => {
       } else if (event.key === ']' && selectedClipId) {
         event.preventDefault();
         moveClipRight();
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedClipId) {
+        event.preventDefault();
+        // Remove clip from timeline
+        const clip = clips.find(c => c.id === selectedClipId);
+        if (clip) {
+          useTimelineStore.getState().removeClip(selectedClipId);
+          console.log('Removed clip from timeline:', clip.name);
+          toast.success(`Removed "${clip.name}" from timeline`);
+        }
       }
     };
 

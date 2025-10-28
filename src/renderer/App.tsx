@@ -1,4 +1,5 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { useTimelineStore } from './store/timelineStore';
 import { useExportStore } from './store/exportStore';
 import { useMediaLibraryStore } from './store/mediaLibraryStore';
@@ -147,6 +148,31 @@ const App: React.FC = () => {
       onDrop={handleFileDrop}
       onDragOver={handleFileDragOver}
     >
+      {/* Toast Notifications */}
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#1f2937',
+            color: '#fff',
+            border: '1px solid #374151',
+          },
+          success: {
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
+      
       {/* Header */}
       <header 
         className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between" 

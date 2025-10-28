@@ -32,10 +32,51 @@ npm install
 npm run dev
 ```
 
-### Production
+### Production (macOS)
+
 Download the latest release from [GitHub Releases](https://github.com/mlx93/ClipForge/releases):
 - `ClipForge-1.0.0.dmg` - Intel Mac
 - `ClipForge-1.0.0-arm64.dmg` - Apple Silicon Mac
+
+#### First-Time Installation on macOS
+
+**Important:** ClipForge is not code-signed with an Apple Developer ID. macOS Gatekeeper will show a security warning on first launch.
+
+**To install and run ClipForge:**
+
+1. **Download** the appropriate DMG file for your Mac
+2. **Mount** the DMG by double-clicking it
+3. **Drag** ClipForge.app to your Applications folder
+4. **First Launch** - macOS will block the app:
+   - You'll see: *"ClipForge.app can't be opened because it is from an unidentified developer"*
+   
+5. **Bypass Gatekeeper** (choose either method):
+
+   **Method 1 (Recommended):**
+   - Go to **System Preferences** → **Security & Privacy** → **General** tab
+   - You'll see a message: *"ClipForge.app was blocked from use"*
+   - Click **"Open Anyway"**
+   - Click **"Open"** in the confirmation dialog
+   
+   **Method 2:**
+   - Right-click (or Control-click) on **ClipForge.app** in Applications
+   - Select **"Open"** from the context menu
+   - Click **"Open"** in the dialog that appears
+
+6. **Grant Permissions** (if prompted):
+   - Allow file access when importing/exporting videos
+   - FFmpeg is bundled with the app - no separate installation needed
+
+**After first launch**, ClipForge will open normally like any other app.
+
+#### Troubleshooting
+
+- **"ClipForge is damaged"**: macOS quarantine flag is set. Open Terminal and run:
+  ```bash
+  xattr -cr /Applications/ClipForge.app
+  ```
+- **Export fails**: Ensure you have sufficient disk space for video export
+- **Videos won't import**: Check that files are supported formats (MP4, MOV, AVI, MKV, WebM)
 
 ## Usage
 

@@ -89,6 +89,21 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
     }
   });
 
+  // Delete file handler
+  ipcMain.handle('delete-file', async (_, filePath: string) => {
+    try {
+      const fs = await import('fs/promises');
+      await fs.unlink(filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('Delete file error:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to delete file' 
+      };
+    }
+  });
+
   // Show save dialog handler
   ipcMain.handle(IPC_CHANNELS.SHOW_SAVE_DIALOG, async (_, options: any) => {
     try {

@@ -7,6 +7,8 @@ const VideoPreview: React.FC = () => {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [duration, setDuration] = React.useState(0);
+  const [hasError, setHasError] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
 
   // Get the current clip based on playhead position
   const getCurrentClip = () => {
@@ -31,6 +33,10 @@ const VideoPreview: React.FC = () => {
     const video = videoRef.current;
     if (!video || !currentClip) return;
 
+    // Reset error state when loading new video
+    setHasError(false);
+    setErrorMessage('');
+    
     video.src = `file://${currentClip.path}`;
     video.load();
   }, [currentClip]);
@@ -62,7 +68,7 @@ const VideoPreview: React.FC = () => {
     
     // Only seek if the difference is significant to avoid constant seeking
     // Also check if video is not currently playing to avoid conflicts
-    if (Math.abs(video.currentTime - videoTime) > 0.2 && video.paused) {
+    if (Math.abs(video.currentTime - videoTime) > 0.05 && video.paused) {
       video.currentTime = videoTime;
     }
   }, [playhead, currentClip, clips]);
@@ -122,6 +128,12 @@ const VideoPreview: React.FC = () => {
 
   const handlePause = () => {
     setIsPlaying(false);
+  };
+
+  const handleError = () => {
+    setHasError(true);
+    setErrorMessage('Unable to load video. File may be corrupted or unsupported format.');
+    console.error('Video load error:', currentClip?.path);
   };
 
   const togglePlayPause = () => {
@@ -217,6 +229,23 @@ const VideoPreview: React.FC = () => {
     );
   }
 
+  if (hasError) {
+    return (
+      <div className="h-full flex items-center justify-center text-gray-400">
+        <div className="text-center max-w-md px-4">
+          <svg className="w-16 h-16 mx-auto mb-4 text-red-400 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <p className="text-lg font-medium text-red-400">Video Load Error</p>
+          <p className="text-sm mt-2">{errorMessage}</p>
+          {currentClip && (
+            <p className="text-xs mt-3 text-gray-500 truncate">{currentClip.path}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Video player */}
@@ -228,6 +257,7 @@ const VideoPreview: React.FC = () => {
           onTimeUpdate={handleTimeUpdate}
           onPlay={handlePlay}
           onPause={handlePause}
+          onError={handleError}
           preload="metadata"
         />
       </div>

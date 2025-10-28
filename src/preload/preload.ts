@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   trimVideo: (inputPath: string, outputPath: string, trimStart: number, trimEnd: number): Promise<{ success: boolean; outputPath?: string; error?: string }> => 
     ipcRenderer.invoke(IPC_CHANNELS.TRIM_VIDEO, { inputPath, outputPath, trimStart, trimEnd }),
 
+  // Delete file
+  deleteFile: (filePath: string): Promise<{ success: boolean; error?: string }> => 
+    ipcRenderer.invoke('delete-file', filePath),
+
   // Project operations
   saveProject: (project: Project): Promise<{ success: boolean; error?: string }> => 
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_PROJECT, { project }),
@@ -74,6 +78,7 @@ declare global {
       exportTimeline: (request: ExportTimelineRequest) => Promise<ExportTimelineResponse>;
       getVideoMetadata: (filePath: string) => Promise<{ success: boolean; metadata?: VideoMetadata; error?: string }>;
       trimVideo: (inputPath: string, outputPath: string, trimStart: number, trimEnd: number) => Promise<{ success: boolean; outputPath?: string; error?: string }>;
+      deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
       saveProject: (project: Project) => Promise<{ success: boolean; error?: string }>;
       loadProject: (filePath: string) => Promise<{ success: boolean; project?: Project; error?: string }>;
       showSaveDialog: (options: any) => Promise<{ canceled: boolean; filePath?: string }>;

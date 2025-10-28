@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import toast from 'react-hot-toast';
 import { ExportState, ExportSettings, Clip } from '@shared/types';
 import { IPC_CHANNELS } from '@shared/constants';
 
@@ -27,6 +28,13 @@ export const useExportStore = create<ExportStore>((set) => ({
 
   // Actions
   startExport: async (clips: Clip[], settings: ExportSettings) => {
+    // Prevent concurrent exports
+    const currentState = useExportStore.getState();
+    if (currentState.isExporting) {
+      toast.error('Export already in progress. Please wait for it to complete.');
+      return;
+    }
+    
     set({
       isExporting: true,
       progress: 0,
