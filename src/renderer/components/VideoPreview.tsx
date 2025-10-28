@@ -55,8 +55,12 @@ const VideoPreview: React.FC = () => {
     setHasError(false);
     setErrorMessage('');
     
-    video.src = `file://${currentClip.path}`;
-    video.load();
+    // Only update source if it's different
+    const newSrc = `file://${currentClip.path}`;
+    if (video.src !== newSrc) {
+      video.src = newSrc;
+      video.load();
+    }
   }, [currentClip]);
 
   // Sync video time with timeline playhead
@@ -126,15 +130,15 @@ const VideoPreview: React.FC = () => {
     if (currentClipIndex < clips.length - 1) {
       // Move playhead to start of next clip
       const nextClipStartTime = currentClipInfo.clipStartTime + currentClipInfo.clipDuration;
-      useTimelineStore.getState().setPlayhead(nextClipStartTime + 0.01); // Small offset to trigger new clip
+      useTimelineStore.getState().setPlayhead(nextClipStartTime + 0.001); // Minimal offset to trigger new clip
       
-      // Resume playing
+      // Resume playing with minimal delay
       setTimeout(() => {
         const video = videoRef.current;
         if (video) {
-          video.play();
+          video.play().catch(err => console.error('Play error:', err));
         }
-      }, 50);
+      }, 10); // Reduced from 50ms to 10ms
     } else {
       // End of timeline - pause
       setIsPlaying(false);
@@ -252,15 +256,16 @@ const VideoPreview: React.FC = () => {
   return (
     <div className="h-full flex flex-col">
       {/* Video player */}
-      <div className="flex-1 video-preview flex items-center justify-center">
+      <div className="flex-1 video-preview flex items-center justify-center bg-black">
         <video
           ref={videoRef}
-          className="max-w-full max-h-full"
+          className="max-w-full max-h-full object-contain"
           onPlay={handlePlay}
           onPause={handlePause}
           onEnded={handleEnded}
           onError={handleError}
           preload="metadata"
+          style={{ minHeight: '200px', minWidth: '300px' }}
         />
       </div>
 
