@@ -399,49 +399,52 @@ const Timeline: React.FC = () => {
         const trimStartX = clipX + (currentTrimStart / clip.duration) * clipWidth;
         const trimEndX = clipX + (currentTrimEnd / clip.duration) * clipWidth;
 
-        // Left trim handle (on all clips)
-        const leftHandle = new fabric.Rect({
-          left: trimStartX - handleWidth/2,
-          top: clipY,
-          width: handleWidth,
-          height: clipHeight,
-          fill: selectedClipId === clip.id ? '#ef4444' : '#dc2626',
-          stroke: selectedClipId === clip.id ? '#dc2626' : '#b91c1c',
-          strokeWidth: 1,
-          selectable: true,
-          lockMovementY: true,
-          hasControls: false,
-          hasBorders: false,
-          clipId: clip.id,
-          isTrimHandle: true,
-          handleType: 'left',
-          clipStartX: clipX,
-          clipWidth: clipWidth,
-        } as any);
-        
-        canvas.add(leftHandle);
+        // ONLY show trim handles for SELECTED clip
+        if (selectedClipId === clip.id) {
+          // Left trim handle (ONLY for selected clip)
+          const leftHandle = new fabric.Rect({
+            left: trimStartX - handleWidth/2,
+            top: clipY,
+            width: handleWidth,
+            height: clipHeight,
+            fill: '#ef4444',
+            stroke: '#dc2626',
+            strokeWidth: 2,
+            selectable: true,
+            lockMovementY: true,
+            hasControls: false,
+            hasBorders: false,
+            clipId: clip.id,
+            isTrimHandle: true,
+            handleType: 'left',
+            clipStartX: clipX,
+            clipWidth: clipWidth,
+          } as any);
+          
+          canvas.add(leftHandle);
 
-        // Right trim handle (on all clips)
-        const rightHandle = new fabric.Rect({
-          left: trimEndX - handleWidth/2,
-          top: clipY,
-          width: handleWidth,
-          height: clipHeight,
-          fill: selectedClipId === clip.id ? '#ef4444' : '#dc2626',
-          stroke: selectedClipId === clip.id ? '#dc2626' : '#b91c1c',
-          strokeWidth: 1,
-          selectable: true,
-          lockMovementY: true,
-          hasControls: false,
-          hasBorders: false,
-          clipId: clip.id,
-          isTrimHandle: true,
-          handleType: 'right',
-          clipStartX: clipX,
-          clipWidth: clipWidth,
-        } as any);
-        
-        canvas.add(rightHandle);
+          // Right trim handle (ONLY for selected clip)
+          const rightHandle = new fabric.Rect({
+            left: trimEndX - handleWidth/2,
+            top: clipY,
+            width: handleWidth,
+            height: clipHeight,
+            fill: '#ef4444',
+            stroke: '#dc2626',
+            strokeWidth: 2,
+            selectable: true,
+            lockMovementY: true,
+            hasControls: false,
+            hasBorders: false,
+            clipId: clip.id,
+            isTrimHandle: true,
+            handleType: 'right',
+            clipStartX: clipX,
+            clipWidth: clipWidth,
+          } as any);
+          
+          canvas.add(rightHandle);
+        }
 
         // Clip text
         canvas.add(new fabric.Text(clip.name, {
@@ -572,6 +575,12 @@ const Timeline: React.FC = () => {
                     +
                   </button>
 
+                  {!selectedClipId && clips.length > 0 && (
+                    <span className="text-sm text-gray-400 italic">
+                      Click a clip to select it and show trim handles
+                    </span>
+                  )}
+
                   {isTrimming && (
                     <>
                       <div className="border-l border-gray-600 h-6 mx-2"></div>
@@ -598,6 +607,7 @@ const Timeline: React.FC = () => {
                   {selectedClipId && !isTrimming && (
                     <>
                       <div className="border-l border-gray-600 h-6 mx-2"></div>
+                      <span className="text-xs text-gray-500 mr-2">Reorder:</span>
                       <button
                         onClick={moveClipLeft}
                         disabled={clips.findIndex(c => c.id === selectedClipId) === 0}
@@ -614,12 +624,14 @@ const Timeline: React.FC = () => {
                       >
                         →
                       </button>
+                      <div className="border-l border-gray-600 h-6 mx-2"></div>
+                      <span className="text-xs text-gray-500 mr-2">Edit:</span>
                       <button
                         onClick={splitClipAtPlayhead}
                         className="text-gray-400 hover:text-red-400 px-3 py-1 rounded text-sm border border-gray-600 hover:border-red-400"
-                        title="Split clip at playhead (S) - cuts the selected clip into two parts at the current playhead position"
+                        title="Split clip at playhead (S) - cuts the selected clip into two separate clips at the red playhead line"
                       >
-                        ✂️ Split
+                        ✂️ Split at Playhead
                       </button>
                     </>
                   )}
