@@ -174,6 +174,8 @@ const Timeline: React.FC = () => {
         const clip = clips.find(c => c.id === target.clipId);
         if (!clip) return;
 
+        // Select the clip being trimmed and show trim UI
+        setSelectedClip(target.clipId);
         setIsTrimming(true);
 
         const currentTotalDuration = useTimelineStore.getState().totalDuration;
@@ -201,7 +203,12 @@ const Timeline: React.FC = () => {
           if (tempTrimEnd === null) {
             setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
           }
-          console.log('Left trim handle preview:', { newTrimStart, clipDuration: clip.duration });
+          
+          // Update playhead to follow trim handle
+          const newPlayheadTime = clipStartTime + newTrimStart;
+          setPlayhead(newPlayheadTime);
+          
+          console.log('Left trim handle preview:', { newTrimStart, clipDuration: clip.duration, playhead: newPlayheadTime });
         } else if (target.handleType === 'right') {
           // Constrain to clip bounds
           const minX = target.clipStartX + handleWidth;
@@ -215,7 +222,12 @@ const Timeline: React.FC = () => {
           if (tempTrimStart === null) {
             setTempTrimStart(clip.trimStart);
           }
-          console.log('Right trim handle preview:', { newTrimEnd, clipDuration: clip.duration });
+          
+          // Update playhead to follow trim handle
+          const newPlayheadTime = clipStartTime + newTrimEnd;
+          setPlayhead(newPlayheadTime);
+          
+          console.log('Right trim handle preview:', { newTrimEnd, clipDuration: clip.duration, playhead: newPlayheadTime });
         }
       });
 
@@ -353,51 +365,49 @@ const Timeline: React.FC = () => {
         
         canvas.add(clipRect);
 
-        // Left trim handle (only for selected clip)
-        if (selectedClipId === clip.id) {
-          const leftHandle = new fabric.Rect({
-            left: clipX - handleWidth/2,
-            top: clipY,
-            width: handleWidth,
-            height: clipHeight,
-            fill: '#ef4444',
-            stroke: '#dc2626',
-            strokeWidth: 1,
-            selectable: true,
-            lockMovementY: true,
-            hasControls: false,
-            hasBorders: false,
-            clipId: clip.id,
-            isTrimHandle: true,
-            handleType: 'left',
-            clipStartX: clipX,
-            clipWidth: clipWidth,
-          } as any);
-          
-          canvas.add(leftHandle);
+        // Left trim handle (on all clips)
+        const leftHandle = new fabric.Rect({
+          left: clipX - handleWidth/2,
+          top: clipY,
+          width: handleWidth,
+          height: clipHeight,
+          fill: selectedClipId === clip.id ? '#ef4444' : '#dc2626',
+          stroke: selectedClipId === clip.id ? '#dc2626' : '#b91c1c',
+          strokeWidth: 1,
+          selectable: true,
+          lockMovementY: true,
+          hasControls: false,
+          hasBorders: false,
+          clipId: clip.id,
+          isTrimHandle: true,
+          handleType: 'left',
+          clipStartX: clipX,
+          clipWidth: clipWidth,
+        } as any);
+        
+        canvas.add(leftHandle);
 
-          // Right trim handle
-          const rightHandle = new fabric.Rect({
-            left: clipX + clipWidth - handleWidth/2,
-            top: clipY,
-            width: handleWidth,
-            height: clipHeight,
-            fill: '#ef4444',
-            stroke: '#dc2626',
-            strokeWidth: 1,
-            selectable: true,
-            lockMovementY: true,
-            hasControls: false,
-            hasBorders: false,
-            clipId: clip.id,
-            isTrimHandle: true,
-            handleType: 'right',
-            clipStartX: clipX,
-            clipWidth: clipWidth,
-          } as any);
-          
-          canvas.add(rightHandle);
-        }
+        // Right trim handle (on all clips)
+        const rightHandle = new fabric.Rect({
+          left: clipX + clipWidth - handleWidth/2,
+          top: clipY,
+          width: handleWidth,
+          height: clipHeight,
+          fill: selectedClipId === clip.id ? '#ef4444' : '#dc2626',
+          stroke: selectedClipId === clip.id ? '#dc2626' : '#b91c1c',
+          strokeWidth: 1,
+          selectable: true,
+          lockMovementY: true,
+          hasControls: false,
+          hasBorders: false,
+          clipId: clip.id,
+          isTrimHandle: true,
+          handleType: 'right',
+          clipStartX: clipX,
+          clipWidth: clipWidth,
+        } as any);
+        
+        canvas.add(rightHandle);
 
         // Clip text
         canvas.add(new fabric.Text(clip.name, {
@@ -505,6 +515,9 @@ const Timeline: React.FC = () => {
                   {isTrimming && (
                     <>
                       <div className="border-l border-gray-600 h-6 mx-2"></div>
+                      <span className="text-sm text-yellow-400 font-medium">
+                        Trimming: {selectedClipId ? clips.find(c => c.id === selectedClipId)?.name : 'Unknown'}
+                      </span>
                       <button
                         onClick={applyTrim}
                         className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium"
