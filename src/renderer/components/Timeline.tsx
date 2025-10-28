@@ -5,6 +5,7 @@ import { useTimelineStore } from '../store/timelineStore';
 const Timeline: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
+  const isDraggingRef = useRef(false); // Track if user is dragging trim handles
 
   // Subscribe to Zustand store - this is the React way
   const clips = useTimelineStore(state => state.clips);
@@ -53,11 +54,33 @@ const Timeline: React.FC = () => {
 
   // Apply or cancel trim
   const applyTrim = async () => {
-    if (!selectedClipId || tempTrimStart === null || tempTrimEnd === null) {
+    console.log('Apply trim called with:', { 
+      selectedClipId, 
+      tempTrimStart, 
+      tempTrimEnd,
+      isTrimming
+    });
+    
+    // Use the current trim values, or fall back to clip values if they're null
+    let trimStart = tempTrimStart;
+    let trimEnd = tempTrimEnd;
+    
+    if (trimStart === null || trimEnd === null) {
+      const clip = clips.find(c => c.id === selectedClipId);
+      if (clip) {
+        trimStart = clip.trimStart;
+        trimEnd = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
+        console.log('Using clip values for trim (fallback):', { trimStart, trimEnd });
+      }
+    } else {
+      console.log('Using current trim values:', { trimStart, trimEnd });
+    }
+    
+    if (!selectedClipId || trimStart === null || trimEnd === null) {
       console.error('Apply trim failed: Missing required data', { 
         selectedClipId, 
-        tempTrimStart, 
-        tempTrimEnd 
+        trimStart, 
+        trimEnd 
       });
       return;
     }
@@ -70,8 +93,8 @@ const Timeline: React.FC = () => {
     
     console.log('Applying trim:', { 
       clipId: selectedClipId, 
-      trimStart: tempTrimStart, 
-      trimEnd: tempTrimEnd,
+      trimStart: trimStart, 
+      trimEnd: trimEnd,
       originalClip: clip,
       originalPath: clip.path
     });
@@ -85,10 +108,16 @@ const Timeline: React.FC = () => {
       const outputPath = `${basePath}_trimmed.${extension}`;
       
       console.log('Trim paths:', { originalPath, outputPath });
+      console.log('Trim validation:', { 
+        trimStart, 
+        trimEnd, 
+        clipDuration: clip.duration,
+        isValid: trimStart >= 0 && trimEnd > trimStart && trimEnd <= clip.duration
+      });
       
       // Validate trim values
-      if (tempTrimStart < 0 || tempTrimEnd <= tempTrimStart || tempTrimEnd > clip.duration) {
-        throw new Error(`Invalid trim values: start=${tempTrimStart}, end=${tempTrimEnd}, duration=${clip.duration}`);
+      if (trimStart < 0 || trimEnd <= trimStart || trimEnd > clip.duration) {
+        throw new Error(`Invalid trim values: start=${trimStart}, end=${trimEnd}, duration=${clip.duration}`);
       }
       
       // Show progress indicator
@@ -98,8 +127,8 @@ const Timeline: React.FC = () => {
       const result = await window.electronAPI.trimVideo(
         originalPath,
         outputPath,
-        tempTrimStart,
-        tempTrimEnd
+        trimStart,
+        trimEnd
       );
       
       console.log('Trim result:', result);
@@ -107,16 +136,16 @@ const Timeline: React.FC = () => {
       if (result.success) {
         // Update the clip with new trim values and new path
         useTimelineStore.getState().updateClip(selectedClipId, {
-          trimStart: tempTrimStart,
-          trimEnd: tempTrimEnd,
+          trimStart: trimStart,
+          trimEnd: trimEnd,
           path: result.outputPath!,
-          duration: tempTrimEnd - tempTrimStart
+          duration: trimEnd - trimStart
         });
         
         // Recalculate total duration after trim
         const updatedClips = clips.map(c => 
           c.id === selectedClipId 
-            ? { ...c, trimStart: tempTrimStart, trimEnd: tempTrimEnd, path: result.outputPath!, duration: tempTrimEnd - tempTrimStart }
+            ? { ...c, trimStart: trimStart, trimEnd: trimEnd, path: result.outputPath!, duration: trimEnd - trimStart }
             : c
         );
         
@@ -194,6 +223,12 @@ const Timeline: React.FC = () => {
   // Use layoutEffect for DOM measurements and canvas operations
   // Force re-render when playhead changes by including it in dependencies
   useLayoutEffect(() => {
+    // Skip canvas re-render if user is dragging trim handles
+    if (isDraggingRef.current) {
+      console.log('Skipping canvas re-render during drag');
+      return;
+    }
+    
     // Add resize observer to handle container size changes
     if (!canvasRef.current) return;
     
@@ -233,7 +268,7 @@ const Timeline: React.FC = () => {
         if (!event.target) {
           const pointer = canvas.getPointer(event.e);
           const currentTotalDuration = useTimelineStore.getState().totalDuration;
-          const clickedTime = (pointer.x / canvas.width!) * currentTotalDuration;
+          const clickedTime = (pointer.x / (canvas.width! * zoom)) * currentTotalDuration;
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
           console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
           
@@ -260,6 +295,10 @@ const Timeline: React.FC = () => {
             if (clip) {
               setTempTrimStart(clip.trimStart);
               setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+              console.log('Initialized trim values on clip click:', { 
+                tempTrimStart: clip.trimStart, 
+                tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
+              });
             }
             console.log('Selected clip and started trim mode:', target.clipId);
           } else if (target.isTrimHandle) {
@@ -271,7 +310,12 @@ const Timeline: React.FC = () => {
               // Initialize trim values for the selected clip
               setTempTrimStart(clip.trimStart);
               setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+              console.log('Initialized trim values on trim handle click:', { 
+                tempTrimStart: clip.trimStart, 
+                tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
+              });
               console.log('Started trim mode for clip:', target.clipId);
+              console.log('⚠️ DRAG the trim handles to adjust trim start/end. Clicking alone does not change trim values.');
             }
           }
         }
@@ -282,17 +326,40 @@ const Timeline: React.FC = () => {
         const target = event.target as any;
         if (!target || !target.isTrimHandle) return;
         
+        // Set dragging flag to prevent canvas re-render
+        isDraggingRef.current = true;
+        
         const clip = clips.find(c => c.id === target.clipId);
         if (!clip) return;
+
+        // Pause video when starting to drag trim handles
+        const videoElement = document.querySelector('video') as HTMLVideoElement;
+        if (videoElement && !videoElement.paused) {
+          videoElement.pause();
+          console.log('Paused video for trim handle dragging');
+        }
 
         // Select the clip being trimmed and show trim UI
         setSelectedClip(target.clipId);
         console.log('Setting isTrimming to true for clip:', target.clipId);
         setIsTrimming(true);
+        
+        // Initialize trim values if they're null
+        if (tempTrimStart === null || tempTrimEnd === null) {
+          const clip = clips.find(c => c.id === target.clipId);
+          if (clip) {
+            setTempTrimStart(clip.trimStart);
+            setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+            console.log('Initialized trim values in moving:', { 
+              tempTrimStart: clip.trimStart, 
+              tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
+            });
+          }
+        }
 
         const currentTotalDuration = useTimelineStore.getState().totalDuration;
         const newX = target.left + target.width / 2; // Center of handle
-        const newTime = (newX / canvas.width!) * currentTotalDuration;
+        const newTime = (newX / (canvas.width! * zoom)) * currentTotalDuration;
 
         // Find clip's start time on timeline
         let clipStartTime = 0;
@@ -315,13 +382,20 @@ const Timeline: React.FC = () => {
           if (tempTrimEnd === null) {
             setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
           }
+          console.log('Left trim handle update:', { 
+            newTrimStart, 
+            tempTrimEnd, 
+            clipDuration: clip.duration,
+            relativeTime,
+            clipStartTime
+          });
           
           // Update playhead to follow trim handle
           const newPlayheadTime = clipStartTime + newTrimStart;
           setPlayhead(newPlayheadTime);
           
           // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width!;
+          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * zoom;
           const objects = canvas.getObjects();
           const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line');
           const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
@@ -349,13 +423,20 @@ const Timeline: React.FC = () => {
           if (tempTrimStart === null) {
             setTempTrimStart(clip.trimStart);
           }
+          console.log('Right trim handle update:', { 
+            newTrimEnd, 
+            tempTrimStart, 
+            clipDuration: clip.duration,
+            relativeTime,
+            clipStartTime
+          });
           
           // Update playhead to follow trim handle
           const newPlayheadTime = clipStartTime + newTrimEnd;
           setPlayhead(newPlayheadTime);
           
           // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width!;
+          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * zoom;
           const objects = canvas.getObjects();
           const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line');
           const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle');
@@ -378,7 +459,23 @@ const Timeline: React.FC = () => {
         const target = event.target as any;
         if (!target || !target.isTrimHandle) return;
         
+        // Clear dragging flag to allow canvas re-render
+        isDraggingRef.current = false;
+        
         console.log('Trim handle drag ended for clip:', target.clipId);
+        
+        // Resume video playback if it was playing before trim
+        const videoElement = document.querySelector('video') as HTMLVideoElement;
+        if (videoElement && videoElement.paused) {
+          // Only resume if the video was playing before we started trimming
+          // We'll check if the play button is visible to determine this
+          const playButton = document.querySelector('[data-testid="play-button"]') as HTMLButtonElement;
+          if (playButton && playButton.style.display !== 'none') {
+            videoElement.play();
+            console.log('Resumed video after trim handle dragging');
+          }
+        }
+        
         // Keep isTrimming true so Apply/Cancel buttons remain visible
       });
 
@@ -449,7 +546,7 @@ const Timeline: React.FC = () => {
       if (clips.length > 0 && totalDuration > 0) {
         let timeInterval = 5;
         const minSpacing = 80;
-        const pixelsPerSecond = canvas.width! / totalDuration;
+        const pixelsPerSecond = (canvas.width! / zoom) / totalDuration;
         
         if (timeInterval * pixelsPerSecond < minSpacing) {
           timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
@@ -458,8 +555,8 @@ const Timeline: React.FC = () => {
         console.log('Drawing timeline:', { canvasWidth: canvas.width, totalDuration, pixelsPerSecond });
 
         for (let time = 0; time <= totalDuration; time += timeInterval) {
-          const x = (time / totalDuration) * canvas.width!;
-          if (x > canvas.width!) break;
+          const x = (time / totalDuration) * (canvas.width! / zoom);
+          if (x > (canvas.width! / zoom)) break;
 
         canvas.add(new fabric.Line([x, 0, x, canvas.height!], {
           stroke: '#333',
@@ -476,6 +573,8 @@ const Timeline: React.FC = () => {
           fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
           selectable: false,
           evented: false,
+          zoomX: 1 / zoom,
+          zoomY: 1 / zoom,
         } as any));
       }
 
@@ -487,8 +586,8 @@ const Timeline: React.FC = () => {
 
       clips.forEach((clip) => {
         const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
-        const clipWidth = (clipDuration / totalDuration) * canvas.width!;
-        const clipX = (currentTime / totalDuration) * canvas.width!;
+        const clipWidth = (clipDuration / totalDuration) * (canvas.width! / zoom);
+        const clipX = (currentTime / totalDuration) * (canvas.width! / zoom);
         
         console.log('Rendering clip:', {
           clipName: clip.name,
@@ -583,6 +682,8 @@ const Timeline: React.FC = () => {
           selectable: false,
           evented: false,
           clipId: clip.id,
+          zoomX: 1 / zoom,
+          zoomY: 1 / zoom,
         } as any));
 
         // Duration text
@@ -595,6 +696,8 @@ const Timeline: React.FC = () => {
           selectable: false,
           evented: false,
           clipId: clip.id,
+          zoomX: 1 / zoom,
+          zoomY: 1 / zoom,
         } as any));
 
         currentTime += clipDuration;
@@ -602,7 +705,7 @@ const Timeline: React.FC = () => {
 
       // Draw playhead
       if (totalDuration > 0) {
-        const x = (playhead / totalDuration) * canvas.width!;
+        const x = (playhead / totalDuration) * (canvas.width! / zoom);
 
         canvas.add(new fabric.Line([x, 0, x, canvas.height!], {
           stroke: '#ef4444',
