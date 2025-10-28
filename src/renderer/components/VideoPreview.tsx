@@ -132,13 +132,13 @@ const VideoPreview: React.FC = () => {
       const nextClipStartTime = currentClipInfo.clipStartTime + currentClipInfo.clipDuration;
       useTimelineStore.getState().setPlayhead(nextClipStartTime + 0.001); // Minimal offset to trigger new clip
       
-      // Resume playing with minimal delay
+      // Resume playing with minimal delay for seamless transition
       setTimeout(() => {
         const video = videoRef.current;
         if (video) {
           video.play().catch(err => console.error('Play error:', err));
         }
-      }, 10); // Reduced from 50ms to 10ms
+      }, 2); // Reduced to 2ms for near-seamless playback
     } else {
       // End of timeline - pause
       setIsPlaying(false);
@@ -271,11 +271,11 @@ const VideoPreview: React.FC = () => {
 
       {/* Controls */}
       <div className="bg-gray-800 border-t border-gray-700 p-4">
-        <div className="flex items-center space-x-4">
-          {/* Play/Pause button */}
+        <div className="flex items-center gap-4">
+          {/* Play/Pause button - Fixed width */}
           <button
             onClick={togglePlayPause}
-            className="text-white hover:text-gray-300 transition-colors"
+            className="text-white hover:text-gray-300 transition-colors flex-shrink-0"
             title={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
@@ -289,16 +289,16 @@ const VideoPreview: React.FC = () => {
             )}
           </button>
 
-          {/* Time display - Shows global timeline position */}
-          <div className="flex items-center space-x-2 text-sm text-gray-400">
-            <span>{formatTime(playhead)}</span>
+          {/* Time display - Fixed width */}
+          <div className="flex items-center gap-2 text-sm text-gray-400 flex-shrink-0 w-24">
+            <span className="tabular-nums">{formatTime(playhead)}</span>
             <span>/</span>
-            <span>{formatTime(totalDuration)}</span>
+            <span className="tabular-nums">{formatTime(totalDuration)}</span>
           </div>
 
-          {/* Progress bar - Represents entire timeline */}
+          {/* Progress bar - Takes remaining space */}
           <div 
-            className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer relative"
+            className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer relative min-w-0"
             onClick={handleProgressClick}
           >
             <div 
@@ -307,8 +307,8 @@ const VideoPreview: React.FC = () => {
             />
           </div>
 
-          {/* Clip info */}
-          <div className="text-sm text-gray-400 min-w-0 flex-shrink-0 w-48 truncate">
+          {/* Clip info - Fixed width at the end */}
+          <div className="text-sm text-gray-400 flex-shrink-0 w-48 truncate text-right">
             {currentClip.name}
           </div>
         </div>

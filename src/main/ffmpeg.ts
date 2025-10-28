@@ -1,5 +1,9 @@
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import * as ffmpegLib from 'fluent-ffmpeg';
+import * as ffmpegInstallerLib from '@ffmpeg-installer/ffmpeg';
+
+// Handle CommonJS interop
+const ffmpeg: any = (ffmpegLib as any).default || ffmpegLib;
+const ffmpegInstaller: any = (ffmpegInstallerLib as any).default || ffmpegInstallerLib;
 import { join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -26,8 +30,14 @@ export const exportTimeline = async (
       mkdir(outputDir, { recursive: true }).catch(reject);
     }
 
+    // Debug: Check ffmpeg availability
+    console.log('[FFmpeg Export] ffmpeg type:', typeof ffmpeg);
+    console.log('[FFmpeg Export] ffmpeg is function:', typeof ffmpeg === 'function');
+    
     // Build FFmpeg command
     let command = ffmpeg();
+    console.log('[FFmpeg Export] command type:', typeof command);
+    console.log('[FFmpeg Export] command.input type:', typeof command.input);
 
     // Add input files with trim points
     clips.forEach((clip, index) => {

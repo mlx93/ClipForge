@@ -1,10 +1,14 @@
 import { stat } from 'fs/promises';
 import { extname, basename } from 'path';
 import { promisify } from 'util';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import * as ffmpegLib from 'fluent-ffmpeg';
+import * as ffmpegInstallerLib from '@ffmpeg-installer/ffmpeg';
 import { Clip, VideoMetadata } from '@shared/types';
 import { MAX_FILE_SIZE, ERROR_MESSAGES, SUPPORTED_VIDEO_EXTENSIONS } from '@shared/constants';
+
+// Handle CommonJS interop
+const ffmpeg: any = (ffmpegLib as any).default || ffmpegLib;
+const ffmpegInstaller: any = (ffmpegInstallerLib as any).default || ffmpegInstallerLib;
 
 // Set FFmpeg path
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
