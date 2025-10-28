@@ -2,6 +2,24 @@
 
 ## Recent Achievements (Last 3 Commits)
 
+### Timeline & Trim Fixes (d719fc8) ✅
+- **Problem**: Critical timeline and trim functionality regressions after zoom implementation
+- **Issues Fixed**:
+  - Timeline width regression - canvas appearing tiny despite full-width CSS
+  - Zoom coordinate system broken - incorrect positioning for clicks, trim handles, playhead
+  - Canvas re-rendering interrupting trim handle drag operations
+  - Trim values not updating during drag operations
+  - Apply Trim using fallback values instead of actual trim values
+  - Playhead not following trim handles during drag
+- **Solutions**:
+  - Removed zoom from canvas width calculations (use viewport transform only)
+  - Fixed all coordinate calculations to account for zoom properly
+  - Added drag state tracking (`isDraggingRef`) to prevent canvas re-renders during drag
+  - Implemented video pause/resume during trim operations
+  - Enhanced trim value initialization and state management
+  - Increased media library width for better UX (320px → 384px)
+- **Impact**: Timeline and trim functionality fully operational, smooth drag operations, accurate video trimming
+
 ### Bundle Optimization (b0df0b3) ✅
 - **Problem**: 500+ kB bundle causing slow startup and warnings
 - **Solution**: Code splitting with manual chunks and lazy loading
@@ -17,11 +35,6 @@
 - **Project Management**: Save/load .clipforge files with full state persistence
 - **Application Menu**: Native macOS menu with comprehensive keyboard shortcuts
 - **Export Preview**: Enhanced dialog with settings summary and thumbnail preview
-
-### Video Trimming & UI Fixes (c6d8467) ✅
-- **Trim Workflow**: Complete Apply/Cancel trim functionality
-- **Synchronization**: Fixed video-timeline sync issues
-- **Visual Feedback**: Improved clip selection and trim handle interactions
 
 ## Completed Features
 
@@ -75,14 +88,14 @@
 
 ## In Progress / Blocked
 
-### Polish Features
-- ⏳ Trim handle dragging (functional but UI issues)
-- ⏳ Timeline zoom (buttons don't work)
-- ⏳ Project save/load (not implemented)
-- ⏳ Application menu (not implemented)
-- ⏳ Export preview (not implemented)
+### Polish Features - ALL COMPLETED ✅
+- ✅ Trim handle dragging - FULLY FUNCTIONAL
+- ✅ Timeline zoom - FULLY FUNCTIONAL
+- ✅ Project save/load - IMPLEMENTED
+- ✅ Application menu - IMPLEMENTED
+- ✅ Export preview - IMPLEMENTED
 
-### Critical Bugs - FIXED ✅
+### Critical Bugs - ALL FIXED ✅
 - ✅ Timeline playhead not responding to clicks - FIXED
 - ✅ Video-timeline synchronization broken - FIXED
 - ✅ Apply Trim button not visible - FIXED
@@ -90,22 +103,24 @@
 - ✅ Playhead doesn't follow trim handles - FIXED
 - ✅ Timeline width regression - FIXED
 - ✅ Zoom coordinate system broken - FIXED
+- ✅ Canvas re-rendering interrupting drag - FIXED
+- ✅ Trim values not updating - FIXED
 
 ## Known Issues
 
-### High Priority - RESOLVED ✅
+### High Priority - ALL RESOLVED ✅
 1. ✅ **Sync Issues**: Video player, timeline playhead, and trim handles synchronized
 2. ✅ **Trim Workflow**: Apply button appears and trim functionality works
 3. ✅ **Visual Feedback**: Clips show as shorter after trim
 4. ✅ **Timeline Zoom**: Zoom functionality works correctly with viewport transform
+5. ✅ **Drag Operations**: Trim handles can be dragged smoothly without interruption
 
 ### Medium Priority
-5. **Performance**: Canvas re-rendering may be excessive
+5. **Performance**: Canvas re-rendering optimized with drag state tracking
 
 ### Low Priority
-6. **Project Management**: No save/load functionality yet
-7. **Application Menu**: No menu bar shortcuts
-8. **Keyboard Shortcuts**: Not all implemented
+6. **Undo/Redo**: Not yet implemented
+7. **Advanced Keyboard Shortcuts**: Some shortcuts not implemented
 
 ## What Works
 - ✅ Video import (drag & drop + file picker)
@@ -116,14 +131,22 @@
 - ✅ Split at playhead
 - ✅ Video export (FFmpeg pipeline)
 - ✅ DMG packaging
+- ✅ Timeline zoom with viewport transform
+- ✅ Trim handle dragging with smooth operation
+- ✅ Apply Trim with actual video processing
+- ✅ Project save/load functionality
+- ✅ Application menu with keyboard shortcuts
+- ✅ Export preview with settings
 
-## What Doesn't Work - RESOLVED ✅
+## What Doesn't Work - ALL RESOLVED ✅
 - ✅ Timeline click-to-seek - FIXED
 - ✅ Video-timeline synchronization - FIXED
 - ✅ Apply trim workflow - FIXED
 - ✅ Trimmed clip visualization - FIXED
 - ✅ Timeline zoom - FIXED
 - ✅ Playhead following trim handles - FIXED
+- ✅ Canvas re-rendering during drag - FIXED
+- ✅ Trim value state management - FIXED
 
 ## Remaining Work
 
