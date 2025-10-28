@@ -33,7 +33,6 @@ export const exportTimeline = async (
     clips.forEach((clip, index) => {
       // Sanitize and quote file path to handle spaces and special characters
       const sanitizedPath = clip.path.replace(/\\/g, '/');
-      const input = ffmpeg.input(sanitizedPath);
       
       // Apply trim points if specified
       if (clip.trimStart > 0 || clip.trimEnd > 0) {
@@ -41,13 +40,13 @@ export const exportTimeline = async (
         const duration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : undefined;
         
         if (duration) {
-          input.inputOptions([`-ss ${startTime}`, `-t ${duration}`]);
+          command.input(sanitizedPath).inputOptions([`-ss ${startTime}`, `-t ${duration}`]);
         } else {
-          input.inputOptions([`-ss ${startTime}`]);
+          command.input(sanitizedPath).inputOptions([`-ss ${startTime}`]);
         }
+      } else {
+        command.input(sanitizedPath);
       }
-      
-      command = command.addInput(input);
     });
 
     // Configure output

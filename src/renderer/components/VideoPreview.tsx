@@ -303,7 +303,7 @@ const VideoPreview: React.FC = () => {
           </div>
 
           {/* Clip info */}
-          <div className="text-sm text-gray-400">
+          <div className="text-sm text-gray-400 min-w-0 flex-shrink-0 w-48 truncate">
             {currentClip.name}
           </div>
         </div>

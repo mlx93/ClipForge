@@ -18,8 +18,9 @@ const App: React.FC = () => {
   const { clips, addClips } = useTimelineStore();
   const { isExporting, showExportDialog, setShowExportDialog } = useExportStore();
   const { clips: mediaLibraryClips, setClips } = useMediaLibraryStore();
-  const { setDirty } = useProjectStore();
+  const { setDirty, currentProject } = useProjectStore();
   const [isLoading, setIsLoading] = useState(false);
+  const initialLoadRef = React.useRef(true);
 
   useEffect(() => {
     // Set up IPC listeners
@@ -91,10 +92,19 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Mark project as dirty when timeline changes
+  // Mark project as dirty when timeline changes (but not on initial load or project open)
   useEffect(() => {
-    setDirty(true);
-  }, [clips, setDirty]);
+    // Skip the first render
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      return;
+    }
+    
+    // Only set dirty if we have a current project
+    if (currentProject) {
+      setDirty(true);
+    }
+  }, [clips, setDirty, currentProject]);
 
   const handleImportFiles = async (filePaths: string[]) => {
     if (filePaths.length === 0) return;
