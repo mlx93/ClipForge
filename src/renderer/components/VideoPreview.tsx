@@ -15,7 +15,7 @@ const VideoPreview: React.FC = () => {
     let currentTime = 0;
     for (const clip of clips) {
       const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
-      if (playhead >= currentTime && playhead <= currentTime + clipDuration) {
+      if (playhead >= currentTime && playhead < currentTime + clipDuration) {
         return clip;
       }
       currentTime += clipDuration;
@@ -51,8 +51,17 @@ const VideoPreview: React.FC = () => {
     const timeInClip = playhead - clipStartTime;
     const videoTime = currentClip.trimStart + timeInClip;
     
+    console.log('Syncing video to timeline:', {
+      playhead,
+      clipStartTime,
+      timeInClip,
+      videoTime,
+      currentVideoTime: video.currentTime,
+      difference: Math.abs(video.currentTime - videoTime)
+    });
+    
     // Only seek if the difference is significant to avoid constant seeking
-    if (Math.abs(video.currentTime - videoTime) > 0.1) {
+    if (Math.abs(video.currentTime - videoTime) > 0.2) {
       video.currentTime = videoTime;
     }
   }, [playhead, currentClip, clips]);
@@ -74,6 +83,14 @@ const VideoPreview: React.FC = () => {
       }
 
       const timelineTime = clipStartTime + (video.currentTime - currentClip.trimStart);
+      
+      console.log('Syncing timeline to video:', {
+        videoCurrentTime: video.currentTime,
+        clipStartTime,
+        timelineTime,
+        currentPlayhead: playhead
+      });
+      
       useTimelineStore.getState().setPlayhead(timelineTime);
     }, 100); // Update every 100ms for smooth playback
 

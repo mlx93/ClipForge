@@ -172,12 +172,14 @@ const Timeline: React.FC = () => {
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
           console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
           setPlayhead(newTime);
+          console.log('Playhead set to:', newTime);
           // Don't deselect clip when clicking empty space - keep selection
         } else {
           console.log('Clicked on object:', event.target);
           const target = event.target as any;
           if (target.clipId && !target.isTrimHandle) {
             setSelectedClip(target.clipId);
+            console.log('Selected clip:', target.clipId);
           }
         }
       });
@@ -360,6 +362,16 @@ const Timeline: React.FC = () => {
         const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
         const clipWidth = (clipDuration / totalDuration) * canvas.width!;
         const clipX = (currentTime / totalDuration) * canvas.width!;
+        
+        console.log('Rendering clip:', {
+          clipName: clip.name,
+          originalDuration: clip.duration,
+          trimStart: clip.trimStart,
+          trimEnd: clip.trimEnd,
+          clipDuration,
+          clipWidth,
+          clipX
+        });
 
         // Main clip rectangle
         const clipRect = new fabric.Rect({
@@ -568,15 +580,15 @@ const Timeline: React.FC = () => {
                       </span>
                       <button
                         onClick={applyTrim}
-                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium"
-                        title="Apply trim"
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-medium shadow-lg border-2 border-green-500"
+                        title="Apply trim - this will permanently trim the video"
                       >
                         ✓ Apply Trim
                       </button>
                       <button
                         onClick={cancelTrim}
-                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium"
-                        title="Cancel trim"
+                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium shadow-lg border-2 border-red-500"
+                        title="Cancel trim - discard changes"
                       >
                         ✕ Cancel
                       </button>
@@ -604,10 +616,10 @@ const Timeline: React.FC = () => {
                       </button>
                       <button
                         onClick={splitClipAtPlayhead}
-                        className="text-gray-400 hover:text-red-400 px-2 py-1 rounded text-sm"
-                        title="Split clip at playhead (S)"
+                        className="text-gray-400 hover:text-red-400 px-3 py-1 rounded text-sm border border-gray-600 hover:border-red-400"
+                        title="Split clip at playhead (S) - cuts the selected clip into two parts at the current playhead position"
                       >
-                        Split
+                        ✂️ Split
                       </button>
                     </>
                   )}
