@@ -30,6 +30,9 @@ declare global {
       // Check if file exists
       checkFileExists: (filePath: string) => Promise<{ exists: boolean }>;
 
+      // Generate thumbnail
+      generateThumbnail: (videoPath: string, clipId: string) => Promise<{ success: boolean; thumbnailPath?: string; error?: string }>;
+
       // Project operations
       saveProject: (project: Project) => Promise<{ success: boolean; error?: string }>;
       loadProject: (filePath: string) => Promise<{ success: boolean; project?: Project; error?: string }>;

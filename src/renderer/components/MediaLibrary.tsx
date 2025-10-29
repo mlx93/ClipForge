@@ -2,17 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { Clip } from '@shared/types';
 import { useTimelineStore } from '../store/timelineStore';
 import { useMediaLibraryStore } from '../store/mediaLibraryStore';
+import toast from 'react-hot-toast';
 
 interface MediaLibraryProps {
   clips: Clip[];
 }
 
 const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
-  const { removeClip, setSelectedClip, selectedClipId, addClips } = useTimelineStore();
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const { removeClip: removeFromTimeline, setSelectedClip, selectedClipId, addClips } = useTimelineStore();
+  const { removeClip: removeFromLibrary } = useMediaLibraryStore();
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [localClips, setLocalClips] = useState<Clip[]>(propClips);
+  const [thumbnailPaths, setThumbnailPaths] = useState<Record<string, string>>({});
+  const [hoveredClipId, setHoveredClipId] = useState<string | null>(null);
+  const [hoverPreviewUrl, setHoverPreviewUrl] = useState<string | null>(null);
 
   // Update local clips when props change
   React.useEffect(() => {
@@ -30,53 +34,70 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
     return `${mb.toFixed(1)} MB`;
   };
 
-  const generateThumbnail = async (clip: Clip) => {
-    try {
-      // For now, we'll use a placeholder. In a real implementation,
-      // we'd call the main process to generate actual thumbnails
+  // Generate video preview on hover
+  const handleMouseEnter = async (clip: Clip) => {
+    setHoveredClipId(clip.id);
+    
+    // Create temporary video element to capture frame
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.preload = 'metadata';
+    
+    video.onloadedmetadata = () => {
+      // Seek to 1 second or 10% of duration, whichever is smaller
+      const seekTime = Math.min(1, clip.duration * 0.1);
+      video.currentTime = seekTime;
+    };
+    
+    video.onseeked = () => {
+      // Create canvas to capture frame
       const canvas = document.createElement('canvas');
+      canvas.width = 160;
+      canvas.height = 90;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      canvas.width = 64;
-      canvas.height = 48;
       
-      // Create a gradient background
-      const gradient = ctx.createLinearGradient(0, 0, 64, 48);
-      gradient.addColorStop(0, '#374151');
-      gradient.addColorStop(1, '#1f2937');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 64, 48);
-      
-      // Add play icon
-      ctx.fillStyle = '#6b7280';
-      ctx.beginPath();
-      ctx.moveTo(20, 12);
-      ctx.lineTo(20, 36);
-      ctx.lineTo(44, 24);
-      ctx.closePath();
-      ctx.fill();
-      
-      // Add duration text
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(formatDuration(clip.duration), 32, 40);
-      
-      const thumbnailUrl = canvas.toDataURL();
-      setThumbnails(prev => ({ ...prev, [clip.id]: thumbnailUrl }));
-    } catch (error) {
-      // Silently fail - thumbnail generation is not critical
-    }
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, 160, 90);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        setHoverPreviewUrl(dataUrl);
+      }
+    };
+    
+    video.src = `file://${clip.path}`;
   };
 
+  const handleMouseLeave = () => {
+    setHoveredClipId(null);
+    setHoverPreviewUrl(null);
+  };
+
+  // Generate thumbnails on mount - use proper async pattern
   useEffect(() => {
-    localClips.forEach(clip => {
-      if (!thumbnails[clip.id]) {
-        generateThumbnail(clip);
+    const generateThumbnails = async () => {
+      for (const clip of localClips) {
+        // Skip if thumbnail already generated
+        if (thumbnailPaths[clip.id] || clip.thumbnailPath) {
+          if (clip.thumbnailPath && !thumbnailPaths[clip.id]) {
+            setThumbnailPaths(prev => ({ ...prev, [clip.id]: clip.thumbnailPath! }));
+          }
+          continue;
+        }
+
+        try {
+          const result = await window.electronAPI.generateThumbnail(clip.path, clip.id);
+          if (result.success && result.thumbnailPath) {
+            setThumbnailPaths(prev => ({ ...prev, [clip.id]: result.thumbnailPath! }));
+          }
+        } catch (error) {
+          // Silent fail - thumbnail generation is not critical
+          console.warn(`Failed to generate thumbnail for ${clip.name}:`, error);
+        }
       }
-    });
-  }, [localClips]);
+    };
+
+    generateThumbnails();
+  }, [localClips.map(c => c.id).join(',')]); // Only re-run if clip IDs change
 
   const handleDragStart = (event: React.DragEvent, clip: Clip) => {
     event.dataTransfer.setData('application/json', JSON.stringify(clip));
@@ -113,6 +134,23 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
     setDragOverIndex(null);
   };
 
+  const handleRemoveFromLibrary = (clip: Clip) => {
+    // Get all timeline clips
+    const timelineClips = useTimelineStore.getState().clips;
+    
+    // Find all instances that originated from this library clip
+    // Timeline clips have IDs like: ${clip.id}_timeline_${Date.now()}_${random}
+    const instancesToRemove = timelineClips.filter(tc => tc.id.startsWith(clip.id));
+    
+    // Remove all instances from timeline
+    instancesToRemove.forEach(tc => removeFromTimeline(tc.id));
+    
+    // Remove from library
+    removeFromLibrary(clip.id);
+    
+    toast.success(`Removed "${clip.name}" from library${instancesToRemove.length > 0 ? ` and ${instancesToRemove.length} timeline instance(s)` : ''}`);
+  };
+
   if (localClips.length === 0) {
     return (
       <div className="p-4 text-center text-gray-400">
@@ -127,8 +165,8 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
 
   return (
     <div className="p-4 space-y-3">
-      <div className="text-sm text-gray-400 mb-3">
-        {localClips.length} video{localClips.length !== 1 ? 's' : ''} imported
+      <div className="text-lg font-semibold text-white mb-3 border-b border-gray-700 pb-2">
+        Media Library ({localClips.length} clip{localClips.length !== 1 ? 's' : ''})
       </div>
       
       {localClips.map((clip, index) => (
@@ -148,15 +186,27 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, index)}
           onDragEnd={handleDragEnd}
+          onMouseEnter={() => handleMouseEnter(clip)}
+          onMouseLeave={handleMouseLeave}
         >
           <div className="flex items-start space-x-3">
             {/* Thumbnail */}
             <div className="w-16 h-12 bg-gray-600 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {thumbnails[clip.id] ? (
+              {hoveredClipId === clip.id && hoverPreviewUrl ? (
                 <img 
-                  src={thumbnails[clip.id]} 
+                  src={hoverPreviewUrl}
+                  alt={`${clip.name} preview`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (thumbnailPaths[clip.id] || clip.thumbnailPath) ? (
+                <img 
+                  src={`file://${thumbnailPaths[clip.id] || clip.thumbnailPath}`}
                   alt={clip.name}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    // Fallback to icon if thumbnail fails to load
+                    e.currentTarget.style.display = 'none';
+                  }}
                 />
               ) : (
                 <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -200,34 +250,66 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
             
             {/* Actions */}
             <div className="flex items-center space-x-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          // Add to timeline with unique ID
-                          const timelineClip = {
-                            ...clip,
-                            id: `${clip.id}_timeline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-                          };
-                          addClips([timelineClip]);
-                        }}
-                        className="text-gray-400 hover:text-blue-400 transition-colors p-1"
-                        title="Add to timeline"
-                      >
+              {/* Add to Timeline */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Add to timeline with unique ID
+                  const timelineClip = {
+                    ...clip,
+                    id: `${clip.id}_timeline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                  };
+                  addClips([timelineClip]);
+                  toast.success(`Added "${clip.name}" to timeline`);
+                }}
+                className="text-gray-400 hover:text-blue-400 transition-colors p-1"
+                title="Add to timeline"
+              >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
               </button>
               
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeClip(clip.id);
-                        }}
-                        className="text-gray-400 hover:text-red-400 transition-colors p-1"
-                        title="Remove clip"
-                      >
+              {/* Remove from Timeline */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Find timeline instances of this clip
+                  const timelineClips = useTimelineStore.getState().clips;
+                  const instances = timelineClips.filter(tc => tc.id.startsWith(clip.id));
+                  
+                  if (instances.length === 0) {
+                    toast.error(`"${clip.name}" not on timeline`);
+                    return;
+                  }
+                  
+                  // Remove the most recent instance
+                  const mostRecent = instances[instances.length - 1];
+                  removeFromTimeline(mostRecent.id);
+                  toast.success(`Removed "${clip.name}" from timeline`);
+                }}
+                className="text-gray-400 hover:text-yellow-400 transition-colors p-1"
+                title="Remove from timeline"
+              >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Remove from Library */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Show confirmation
+                  if (window.confirm(`Remove "${clip.name}" from library? This will also remove all timeline instances.`)) {
+                    handleRemoveFromLibrary(clip);
+                  }
+                }}
+                className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                title="Remove from library (deletes all instances)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </button>
             </div>

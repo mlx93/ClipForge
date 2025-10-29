@@ -89,12 +89,6 @@ export const getVideoMetadata = async (filePath: string): Promise<VideoMetadata>
   }
 };
 
-export const generateThumbnail = async (clip: Clip, timeOffset: number = 0): Promise<string> => {
-  // This will be implemented in Phase 2 when we add media library
-  // For now, return empty string
-  return '';
-};
-
 const parseFrameRate = (frameRate: string): number => {
   if (!frameRate) return 30;
   

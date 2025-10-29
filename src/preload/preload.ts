@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkFileExists: (filePath: string): Promise<{ exists: boolean }> => 
     ipcRenderer.invoke('check-file-exists', filePath),
 
+  // Generate thumbnail
+  generateThumbnail: (videoPath: string, clipId: string): Promise<{ success: boolean; thumbnailPath?: string; error?: string }> => 
+    ipcRenderer.invoke('generate-thumbnail', { videoPath, clipId }),
+
   // Project operations
   saveProject: (project: Project): Promise<{ success: boolean; error?: string }> => 
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_PROJECT, { project }),

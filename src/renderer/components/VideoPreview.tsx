@@ -264,10 +264,27 @@ const VideoPreview: React.FC = () => {
 
   const togglePlayPause = useCallback(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !currentClip || !currentClipInfo) return;
 
     if (video.paused) {
       console.log('[User Action] Play button clicked');
+      
+      // Before playing, ensure video is at the correct timeline position
+      const timeInClip = playhead - currentClipInfo.clipStartTime;
+      if (timeInClip >= 0 && timeInClip <= currentClipInfo.clipDuration) {
+        const videoTime = currentClip.trimStart + timeInClip;
+        const timeDiff = Math.abs(video.currentTime - videoTime);
+        
+        if (timeDiff > 0.05) {
+          console.log('[User Action] Seeking video to timeline position:', {
+            playhead,
+            videoTime,
+            currentVideoTime: video.currentTime,
+            difference: timeDiff
+          });
+          video.currentTime = videoTime;
+        }
+      }
       
       // Check if video is ready to play
       if (videoReadyStateRef.current === 'canplay') {
@@ -284,7 +301,7 @@ const VideoPreview: React.FC = () => {
       console.log('[User Action] Pause button clicked');
       video.pause();
     }
-  }, []);
+  }, [playhead, currentClip, currentClipInfo]);
 
   // EFFECT 2: Sync timeline playhead with video during playback (using requestAnimationFrame for smoothness)
   useEffect(() => {

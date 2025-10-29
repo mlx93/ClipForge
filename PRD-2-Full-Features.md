@@ -572,13 +572,20 @@ Recording:
   Cmd+R       - Start recording
   Cmd+Shift+R - Stop recording
 
-Other:
+File Operations:
   Cmd+S       - Save project
   Cmd+E       - Export
   Cmd+I       - Import media
   Cmd+N       - New project
   Cmd+O       - Open project
 ```
+
+**Additional Menu Bar Enhancements:**
+• **Comprehensive Application Menu** - Expand menu bar with all keyboard shortcuts visible in dropdown menus
+• **Enhanced File Menu** - New, Open, Save, Export, Import options with keyboard shortcuts
+• **Edit Menu** - Undo, Redo, Copy, Paste, Cut, Delete with proper enabled/disabled states
+• **Recording Menu** - Start/Stop recording options with visual indicators
+• **Help Menu** - Keyboard shortcuts reference and app information
 
 **Implementation:**
 - Use hotkeys-js library

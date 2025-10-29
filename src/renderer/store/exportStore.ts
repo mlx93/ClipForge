@@ -53,15 +53,25 @@ export const useExportStore = create<ExportStore>((set, get) => ({
       const handleProgress = (progress: { progress: number; currentStep: string }) => {
         const currentProgress = Math.round(progress.progress);
         
-        console.log('[Renderer] Received progress update:', currentProgress + '%'); // Debug log
         
-        // Calculate estimated time remaining
+        // Calculate estimated time remaining based on 2x realtime speed
         let estimatedTimeRemaining = null;
         if (currentProgress > 5) { // Only estimate after 5% to get more accurate data
           const elapsedTime = (Date.now() - startTime) / 1000; // seconds
           const progressDecimal = currentProgress / 100;
           const totalEstimatedTime = elapsedTime / progressDecimal;
           estimatedTimeRemaining = Math.max(0, totalEstimatedTime - elapsedTime);
+        } else {
+          // For early progress, estimate based on 2x realtime speed
+          // Calculate total video duration from clips
+          const totalDuration = clips.reduce((sum, clip) => {
+            if (clip.trimEnd > 0) return sum + (clip.trimEnd - clip.trimStart);
+            return sum + clip.duration;
+          }, 0);
+          
+          // At 2x realtime speed, export takes half the video duration
+          const estimatedTotalTime = totalDuration / 2;
+          estimatedTimeRemaining = Math.max(0, estimatedTotalTime);
         }
         
         set({

@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { ipcMain, BrowserWindow, dialog, app } from 'electron';
 import { 
   ImportVideosRequest, 
   ImportVideosResponse, 
@@ -8,8 +8,11 @@ import {
   Project
 } from '@shared/types';
 import { importVideos } from '../fileSystem';
-import { exportTimeline, trimVideo } from '../ffmpeg';
+import { exportTimeline, trimVideo, generateThumbnail } from '../ffmpeg';
 import { IPC_CHANNELS } from '@shared/constants';
+import { join } from 'path';
+import { mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
 
 export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
   // Import videos handler
@@ -176,6 +179,41 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Failed to load project' 
+      };
+    }
+  });
+
+  // Generate thumbnail handler
+  ipcMain.handle('generate-thumbnail', async (_, { videoPath, clipId }: { videoPath: string; clipId: string }) => {
+    try {
+      // Create thumbnails directory in user data folder
+      const userDataPath = app.getPath('userData');
+      const thumbnailsDir = join(userDataPath, 'thumbnails');
+      
+      // Ensure thumbnails directory exists
+      if (!existsSync(thumbnailsDir)) {
+        await mkdir(thumbnailsDir, { recursive: true });
+      }
+      
+      // Generate thumbnail path
+      const thumbnailPath = join(thumbnailsDir, `${clipId}.jpg`);
+      
+      // Check if thumbnail already exists
+      if (existsSync(thumbnailPath)) {
+        return { success: true, thumbnailPath };
+      }
+      
+      // Generate thumbnail at 1 second mark (or 0 if video is shorter)
+      const timeOffset = 1.0;
+      await generateThumbnail(videoPath, timeOffset, thumbnailPath);
+      
+      return { success: true, thumbnailPath };
+    } catch (error) {
+      console.error('Generate thumbnail error:', error);
+      // Don't fail the import if thumbnail generation fails
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to generate thumbnail' 
       };
     }
   });

@@ -17,12 +17,33 @@ const snapToInterval = (value: number): number => {
   return value;
 };
 
+// Define all static dimensions as constants OUTSIDE the component
+const CLIP_HEIGHT = 60; // Fixed pixel height for clips
+const TRIM_HANDLE_WIDTH = 12; // Fixed pixel width for trim handles
+const TRIM_HANDLE_HEIGHT = 70; // Fixed pixel height for trim handles
+const TIME_GRID_HEIGHT = 40; // Fixed pixel height for time markers area
+const SCROLLBAR_HEIGHT = 20; // Fixed pixel height for scrollbar
+const MEDIA_LIBRARY_WIDTH = 384; // Fixed width of media library sidebar
+const PLAYHEAD_LINE_HEIGHT = 200; // Fixed height for playhead line (tall enough to cover timeline area)
+const PLAYHEAD_TRIANGLE_SIZE = 12; // Fixed size for playhead triangle
+
+// Zoom and interaction constants
+const ZOOM_IN_FACTOR = 1.25; // Zoom in multiplier
+const ZOOM_OUT_FACTOR = 0.8; // Zoom out multiplier
+const SCROLL_STEP_PERCENTAGE = 0.1; // 10% of canvas width for scroll step
+const MIN_THUMBNAIL_WIDTH = 20; // Minimum scrollbar thumb width
+const MIN_TIME_MARKER_SPACING = 80; // Minimum pixels between time markers
+const DEFAULT_TIME_INTERVAL = 5; // Default time interval in seconds
+
 const Timeline: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
   const isDraggingRef = useRef(false); // Track if user is dragging trim handles
   const playheadLineRef = useRef<fabric.Line | null>(null); // Store playhead line for efficient updates
   const playheadTriangleRef = useRef<fabric.Triangle | null>(null); // Store playhead triangle for efficient updates
+  const [scrollPosition, setScrollPosition] = React.useState(0); // Horizontal scroll position
+  const [isDraggingScrollbar, setIsDraggingScrollbar] = React.useState(false); // Track scrollbar drag state
+  const actualScrollPositionRef = useRef(0); // Track the actual scroll position being used by rendering
 
   // Subscribe to Zustand store - this is the React way
   const clips = useTimelineStore(state => state.clips);
@@ -113,7 +134,6 @@ const Timeline: React.FC = () => {
   React.useEffect(() => {
     const handleTrimProgress = (progress: { progress: number; currentStep: string }) => {
       setTrimProgress(progress.progress);
-      console.log('Trim progress:', progress);
     };
     
     window.electronAPI.onTrimProgress(handleTrimProgress);
@@ -125,12 +145,6 @@ const Timeline: React.FC = () => {
 
   // Apply or cancel trim
   const applyTrim = async () => {
-    console.log('Apply trim called with:', { 
-      selectedClipId, 
-      tempTrimStart, 
-      tempTrimEnd,
-      isTrimming
-    });
     
     // Use the current trim values, or fall back to clip values if they're null
     let trimStart = tempTrimStart;
@@ -141,10 +155,8 @@ const Timeline: React.FC = () => {
       if (clip) {
         trimStart = clip.trimStart;
         trimEnd = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
-        console.log('Using clip values for trim (fallback):', { trimStart, trimEnd });
       }
     } else {
-      console.log('Using current trim values:', { trimStart, trimEnd });
     }
     
     if (!selectedClipId || trimStart === null || trimEnd === null) {
@@ -164,13 +176,6 @@ const Timeline: React.FC = () => {
       return;
     }
     
-    console.log('Applying trim:', { 
-      clipId: selectedClipId, 
-      trimStart: trimStart, 
-      trimEnd: trimEnd,
-      originalClip: clip,
-      originalPath: clip.path
-    });
     
     try {
       // Set processing state
@@ -296,10 +301,68 @@ const Timeline: React.FC = () => {
     }
   };
 
-  // Keyboard shortcuts for clip reordering and deletion
+  // Keyboard shortcuts for clip reordering, deletion, and timeline scrolling
   React.useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Zoom keyboard shortcuts (Cmd+Plus, Cmd+Minus, Cmd+0)
+      if (event.metaKey) {
+        if (event.key === '+' || event.key === '=') {
+          event.preventDefault();
+          const currentZoom = useTimelineStore.getState().zoom;
+          useTimelineStore.getState().setZoom(currentZoom * ZOOM_IN_FACTOR);
+          return;
+        }
+        if (event.key === '-') {
+          event.preventDefault();
+          const currentZoom = useTimelineStore.getState().zoom;
+          useTimelineStore.getState().setZoom(currentZoom * ZOOM_OUT_FACTOR);
+          return;
+        }
+        if (event.key === '0') {
+          event.preventDefault();
+          useTimelineStore.getState().setZoom(1);
+          return;
+        }
+      }
+
+      // Timeline scrolling with arrow keys (when zoomed)
+      if (zoom > 1 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        const currentCanvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+        const currentVirtualTimelineWidth = currentCanvasWidth * zoom;
+        const currentMaxScroll = Math.max(0, currentVirtualTimelineWidth - currentCanvasWidth);
+        const scrollStep = currentCanvasWidth * SCROLL_STEP_PERCENTAGE;
+        
+        if (event.key === 'ArrowLeft') {
+          setScrollPosition(prev => Math.max(0, prev - scrollStep));
+        } else if (event.key === 'ArrowRight') {
+          setScrollPosition(prev => Math.min(currentMaxScroll, prev + scrollStep));
+        }
+        return;
+      }
+
+      // Tab/Shift+Tab to cycle through timeline clips
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        if (clips.length === 0) return;
+        
+        const currentIndex = selectedClipId ? clips.findIndex(c => c.id === selectedClipId) : -1;
+        let nextIndex;
+        
+        if (event.shiftKey) {
+          // Shift+Tab: previous clip
+          nextIndex = currentIndex <= 0 ? clips.length - 1 : currentIndex - 1;
+        } else {
+          // Tab: next clip
+          nextIndex = currentIndex >= clips.length - 1 ? 0 : currentIndex + 1;
+        }
+        
+        setSelectedClip(clips[nextIndex].id);
+        toast.success(`Selected "${clips[nextIndex].name}"`);
         return;
       }
 
@@ -326,7 +389,7 @@ const Timeline: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [selectedClipId, playhead, clips]);
+  }, [selectedClipId, playhead, clips, zoom]);
 
   // Use layoutEffect for DOM measurements and canvas operations
   // Force re-render when playhead changes by including it in dependencies
@@ -343,8 +406,8 @@ const Timeline: React.FC = () => {
     const resizeObserver = new ResizeObserver(() => {
       if (fabricCanvasRef.current && canvasRef.current) {
         const rect = canvasRef.current.getBoundingClientRect();
-        // Use same width calculation as main useLayoutEffect
-        const newWidth = window.innerWidth - 384; // Full width minus media library width (w-96 = 384px)
+        // Use constant for width calculation
+        const newWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
         fabricCanvasRef.current.setDimensions({
           width: newWidth,
           height: rect.height,
@@ -369,8 +432,9 @@ const Timeline: React.FC = () => {
     
     if (!canvasRef.current) return;
 
-    // Define handleWidth at the top of the effect
-    const handleWidth = 8;
+    // Define handleWidth and handleHeight at the top of the effect
+    const handleWidth = 12;
+    const handleHeight = 70;
 
     // Initialize or get existing canvas
     if (!fabricCanvasRef.current) {
@@ -387,9 +451,30 @@ const Timeline: React.FC = () => {
           const currentState = useTimelineStore.getState();
           const currentZoom = currentState.zoom;
           const currentTotalDuration = currentState.totalDuration;
-          const clickedTime = (pointer.x / (canvas.width! * currentZoom)) * currentTotalDuration;
+          
+          // Use the actual scroll position being used by the rendering system
+          const canvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+          const virtualTimelineWidth = canvasWidth * currentZoom;
+          const maxScroll = Math.max(0, virtualTimelineWidth - canvasWidth);
+          const actualScrollPosition = actualScrollPositionRef.current;
+          
+          // Click position in virtual timeline space with high precision
+          const virtualX = pointer.x + actualScrollPosition;
+          const clickedTime = (virtualX / virtualTimelineWidth) * currentTotalDuration;
           const newTime = Math.max(0, Math.min(clickedTime, currentTotalDuration));
-          console.log('Timeline clicked at x:', pointer.x, 'time:', formatTime(newTime), 'totalDuration:', currentTotalDuration);
+          
+          console.log('Timeline clicked:', {
+            pointerX: pointer.x,
+            scrollPosition: scrollPosition,
+            actualScrollPosition: actualScrollPosition,
+            virtualX,
+            virtualTimelineWidth,
+            clickedTime,
+            newTime: formatTime(newTime),
+            totalDuration: currentTotalDuration,
+            zoom: currentZoom,
+            maxScroll: maxScroll
+          });
           
           // Pause video if it's playing when timeline is clicked
           const videoElement = document.querySelector('video');
@@ -496,6 +581,7 @@ const Timeline: React.FC = () => {
         const currentClips = currentState.clips;
         const currentZoom = currentState.zoom;
         const currentTotalDuration = currentState.totalDuration;
+        const currentScrollPosition = scrollPosition;
         
         const clip = currentClips.find(c => c.id === target.clipId);
         if (!clip) return;
@@ -512,8 +598,14 @@ const Timeline: React.FC = () => {
         console.log('Setting isTrimming to true for clip:', target.clipId);
         setIsTrimming(true);
 
-        const newX = target.left + target.width / 2; // Center of handle
-        const newTime = (newX / (canvas.width! * currentZoom)) * currentTotalDuration;
+        // Convert handle position to virtual timeline space
+        const handleCenterX = target.left + target.width / 2;
+        const canvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+        const virtualTimelineWidth = canvasWidth * currentZoom;
+        const maxScroll = Math.max(0, virtualTimelineWidth - canvasWidth);
+        const clampedScrollPosition = Math.max(0, Math.min(scrollPosition, maxScroll));
+        const virtualX = handleCenterX + clampedScrollPosition;
+        const newTime = (virtualX / virtualTimelineWidth) * currentTotalDuration;
 
         // Find clip's start time on timeline
         let clipStartTime = 0;
@@ -524,10 +616,11 @@ const Timeline: React.FC = () => {
         }
 
         if (target.handleType === 'left') {
-          // Constrain to clip bounds
-          const minX = target.clipStartX;
-          const maxX = target.clipStartX + target.clipWidth - handleWidth;
-          target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
+          // Constrain to clip bounds (using screen space for visible bounds)
+          const clipStartXScreen = target.clipStartX - clampedScrollPosition;
+          const minX = clipStartXScreen;
+          const maxX = clipStartXScreen + target.clipWidth - TRIM_HANDLE_WIDTH;
+          target.left = Math.max(minX - TRIM_HANDLE_WIDTH / 2, Math.min(maxX - TRIM_HANDLE_WIDTH / 2, target.left));
 
           // Calculate new trim start (relative to clip start)
           const relativeTime = newTime - clipStartTime;
@@ -554,8 +647,9 @@ const Timeline: React.FC = () => {
           const newPlayheadTime = clipStartTime + newTrimStart;
           setPlayhead(newPlayheadTime);
           
-          // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * currentZoom;
+          // Update playhead line directly for immediate visual feedback with FIXED dimensions
+          const playheadXVirtual = (newPlayheadTime / currentTotalDuration) * virtualTimelineWidth;
+          const playheadX = playheadXVirtual - currentScrollPosition;
           const objects = canvas.getObjects();
           const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line') as fabric.Line;
           const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle') as fabric.Triangle;
@@ -564,7 +658,7 @@ const Timeline: React.FC = () => {
             (playheadLine as any).set({ x1: playheadX, x2: playheadX });
           }
           if (playheadTriangle) {
-            playheadTriangle.set({ left: playheadX - 6 });
+            playheadTriangle.set({ left: playheadX - PLAYHEAD_TRIANGLE_SIZE / 2 });
           }
           
           canvas.renderAll();
@@ -579,10 +673,11 @@ const Timeline: React.FC = () => {
           
           console.log('Left trim handle preview:', { newTrimStart, clipDuration: clip.duration, playhead: newPlayheadTime });
         } else if (target.handleType === 'right') {
-          // Constrain to clip bounds
-          const minX = target.clipStartX + handleWidth;
-          const maxX = target.clipStartX + target.clipWidth;
-          target.left = Math.max(minX - handleWidth/2, Math.min(maxX - handleWidth/2, target.left));
+          // Constrain to clip bounds (using screen space for visible bounds)
+          const clipStartXScreen = target.clipStartX - clampedScrollPosition;
+          const minX = clipStartXScreen + TRIM_HANDLE_WIDTH;
+          const maxX = clipStartXScreen + target.clipWidth;
+          target.left = Math.max(minX - TRIM_HANDLE_WIDTH / 2, Math.min(maxX - TRIM_HANDLE_WIDTH / 2, target.left));
 
           // Calculate new trim end (relative to clip start)
           const relativeTime = newTime - clipStartTime;
@@ -609,8 +704,9 @@ const Timeline: React.FC = () => {
           const newPlayheadTime = clipStartTime + newTrimEnd;
           setPlayhead(newPlayheadTime);
           
-          // Update playhead line directly for immediate visual feedback
-          const playheadX = (newPlayheadTime / currentTotalDuration) * canvas.width! * currentZoom;
+          // Update playhead line directly for immediate visual feedback with FIXED dimensions
+          const playheadXVirtual = (newPlayheadTime / currentTotalDuration) * virtualTimelineWidth;
+          const playheadX = playheadXVirtual - currentScrollPosition;
           const objects = canvas.getObjects();
           const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line') as fabric.Line;
           const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle') as fabric.Triangle;
@@ -619,7 +715,7 @@ const Timeline: React.FC = () => {
             (playheadLine as any).set({ x1: playheadX, x2: playheadX });
           }
           if (playheadTriangle) {
-            playheadTriangle.set({ left: playheadX - 6 });
+            playheadTriangle.set({ left: playheadX - PLAYHEAD_TRIANGLE_SIZE / 2 });
           }
           
           canvas.renderAll();
@@ -667,6 +763,17 @@ const Timeline: React.FC = () => {
         if (target && target.clipId) {
           if (target.isTrimHandle) {
             canvas.setCursor('ew-resize');
+            // Add hover glow effect to trim handles
+            target.set({ 
+              fill: '#f87171', // Brighter red on hover
+              shadow: new fabric.Shadow({
+                color: 'rgba(239, 68, 68, 0.6)',
+                blur: 8,
+                offsetX: 0,
+                offsetY: 0,
+              })
+            });
+            canvas.renderAll();
           } else {
             canvas.setCursor('pointer');
             // Lighten clip color on hover
@@ -681,11 +788,20 @@ const Timeline: React.FC = () => {
 
       canvas.on('mouse:out', (event) => {
         const target = event.target as any;
-        if (target && target.clipId && target.type === 'rect' && !target.isTrimHandle) {
-          // Restore original clip color
-          const currentSelectedId = useTimelineStore.getState().selectedClipId;
-          target.set('fill', currentSelectedId === target.clipId ? '#60a5fa' : '#3b82f6');
-          canvas.renderAll();
+        if (target && target.clipId) {
+          if (target.isTrimHandle) {
+            // Restore original trim handle appearance
+            target.set({ 
+              fill: '#ef4444',
+              shadow: null
+            });
+            canvas.renderAll();
+          } else if (target.type === 'rect' && !target.isTrimHandle) {
+            // Restore original clip color
+            const currentSelectedId = useTimelineStore.getState().selectedClipId;
+            target.set('fill', currentSelectedId === target.clipId ? '#60a5fa' : '#3b82f6');
+            canvas.renderAll();
+          }
         }
         canvas.setCursor('default');
       });
@@ -696,109 +812,97 @@ const Timeline: React.FC = () => {
     const canvas = fabricCanvasRef.current;
     const rect = canvasRef.current.getBoundingClientRect();
     
-    // Force canvas to use full width of timeline container and container height
-    const newWidth = window.innerWidth - 384; // Full width minus media library width (w-96 = 384px)
-    const newHeight = rect.height;
+    // Calculate dimensions using static constants
+    const canvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+    const canvasHeight = rect.height;
     
-    // No content offset needed since timeline container is already positioned correctly
-    const contentOffset = 0;
+    // Calculate virtual timeline width (this is how wide the timeline "really" is when zoomed)
+    const virtualTimelineWidth = canvasWidth * zoom;
     
-    console.log('Setting canvas dimensions:', { 
-      newWidth, 
-      newHeight, 
-      rectWidth: rect.width, 
-      rectHeight: rect.height,
-      containerWidth: canvasRef.current.parentElement?.offsetWidth,
-      windowWidth: window.innerWidth,
-      contentOffset
+    // Clamp scroll position to valid range
+    const maxScroll = Math.max(0, virtualTimelineWidth - canvasWidth);
+    const clampedScrollPosition = Math.max(0, Math.min(scrollPosition, maxScroll));
+    
+    // Store the actual scroll position being used by rendering
+    actualScrollPositionRef.current = clampedScrollPosition;
+    
+    // Update scroll position if it was clamped
+    if (clampedScrollPosition !== scrollPosition) {
+      setScrollPosition(clampedScrollPosition);
+    }
+    
+    // Calculate clip Y position - start immediately after time grid
+    // Clips should start right after the time grid tick marks, not centered in available space
+    const clipY = TIME_GRID_HEIGHT;
+    
+    console.log('🎨 Canvas render:', { 
+      canvasWidth, 
+      canvasHeight, 
+      zoom,
+      virtualTimelineWidth,
+      scrollPosition: clampedScrollPosition,
+      maxScroll,
+      clipY,
+      totalDuration,
+      pixelsPerSecond: totalDuration > 0 ? virtualTimelineWidth / totalDuration : 0,
+      canScrollRight: scrollPosition < maxScroll,
+      scrollPercentage: maxScroll > 0 ? (scrollPosition / maxScroll * 100).toFixed(1) + '%' : '0%'
     });
     
-    // Force canvas to use full available width - zoom only affects visual scaling, not dimensions
+    // Set canvas to actual viewport size
     canvas.setDimensions({
-      width: newWidth,
-      height: newHeight,
+      width: canvasWidth,
+      height: canvasHeight,
     });
     
-    // Apply zoom as viewport transform - this scales the content without changing canvas dimensions
-    canvas.setViewportTransform([zoom, 0, 0, 1, 0, 0]);
+    // NO viewport transform - identity matrix only
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
 
     // Clear and redraw - Zustand state drives the render
     canvas.clear();
     canvas.backgroundColor = '#1a1a1a';
 
-      // Draw time grid
+      // Draw clips FIRST (so tick marks can be on top later)
       if (clips.length > 0 && totalDuration > 0) {
-        let timeInterval = 5;
-        const minSpacing = 80;
-        const pixelsPerSecond = (canvas.width! / zoom) / totalDuration;
-        
-        if (timeInterval * pixelsPerSecond < minSpacing) {
-          timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
-        }
-
-        console.log('Drawing timeline:', { canvasWidth: canvas.width, totalDuration, pixelsPerSecond });
-
-        for (let time = 0; time <= totalDuration; time += timeInterval) {
-          const x = (time / totalDuration) * (canvas.width! / zoom);
-          if (x > (canvas.width! / zoom)) break;
-
-        canvas.add(new fabric.Line([x, 0, x, canvas.height!], {
-          stroke: '#333',
-          strokeWidth: 1,
-          selectable: false,
-          evented: false,
-        } as any));
-
-        canvas.add(new fabric.Text(formatTime(time), {
-          left: x + 4,
-          top: 10,
-          fontSize: 12,
-          fill: '#666',
-          fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
-          selectable: false,
-          evented: false,
-          zoomX: 1 / zoom,
-          zoomY: 1 / zoom,
-        } as any));
-      }
-
-      // Draw clips with trim handles
       let currentTime = 0;
-      const clipHeight = 60;
-      const clipY = (canvas.height! - clipHeight) / 2;
-      const handleWidth = 8;
 
       clips.forEach((clip) => {
         const clipDuration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
-        const clipWidth = (clipDuration / totalDuration) * (canvas.width! / zoom);
-        const clipX = (currentTime / totalDuration) * (canvas.width! / zoom);
+        const clipWidth = (clipDuration / totalDuration) * virtualTimelineWidth; // Use virtual width
+        const clipXVirtual = (currentTime / totalDuration) * virtualTimelineWidth; // Position in virtual timeline
+        const clipX = clipXVirtual - clampedScrollPosition; // Offset by clamped scroll position
+        
+        // Always render clips for interaction, but only show visually if in viewport
+        const isVisible = !(clipX + clipWidth < -100 || clipX > canvasWidth + 100);
         
         console.log('Rendering clip:', {
           clipName: clip.name,
-          originalDuration: clip.duration,
-          trimStart: clip.trimStart,
-          trimEnd: clip.trimEnd,
           clipDuration,
           clipWidth,
-          clipX
+          clipXVirtual,
+          clipX,
+          clipY,
+          clampedScrollPosition
         });
 
-        // Main clip rectangle
+        // Main clip rectangle - using CLIP_HEIGHT constant
         const clipRect = new fabric.Rect({
           left: clipX,
           top: clipY,
           width: clipWidth,
-          height: clipHeight,
+          height: isVisible ? CLIP_HEIGHT : 1, // Tiny height when outside viewport
           fill: selectedClipId === clip.id ? '#60a5fa' : '#3b82f6',
           stroke: selectedClipId === clip.id ? '#3b82f6' : '#2563eb',
           strokeWidth: selectedClipId === clip.id ? 3 : 2,
-          selectable: false, // Disable dragging for now to avoid overlap issues
+          selectable: false,
           lockMovementY: true,
           hasControls: false,
           hasBorders: false,
           evented: true,
           clipId: clip.id,
           originalIndex: clips.indexOf(clip),
+          scaleX: 1, // Prevent any transforms
+          scaleY: 1,
         } as any);
         
         canvas.add(clipRect);
@@ -816,12 +920,12 @@ const Timeline: React.FC = () => {
 
         // ONLY show trim handles for SELECTED clip
         if (selectedClipId === clip.id) {
-          // Left trim handle (ONLY for selected clip)
+          // Left trim handle (ONLY for selected clip) - using constants
           const leftHandle = new fabric.Rect({
-            left: trimStartX - handleWidth/2,
-            top: clipY,
-            width: handleWidth,
-            height: clipHeight,
+            left: trimStartX - TRIM_HANDLE_WIDTH / 2,
+            top: clipY - (TRIM_HANDLE_HEIGHT - CLIP_HEIGHT) / 2, // Center the taller handle
+            width: TRIM_HANDLE_WIDTH,
+            height: TRIM_HANDLE_HEIGHT,
             fill: '#ef4444',
             stroke: '#dc2626',
             strokeWidth: 2,
@@ -829,21 +933,24 @@ const Timeline: React.FC = () => {
             lockMovementY: true,
             hasControls: false,
             hasBorders: false,
+            cursor: 'ew-resize',
             clipId: clip.id,
             isTrimHandle: true,
             handleType: 'left',
-            clipStartX: clipX,
+            clipStartX: clipXVirtual, // Store virtual position for drag calculations
             clipWidth: clipWidth,
+            scaleX: 1, // Prevent any transforms
+            scaleY: 1,
           } as any);
           
           canvas.add(leftHandle);
 
-          // Right trim handle (ONLY for selected clip)
+          // Right trim handle (ONLY for selected clip) - using constants
           const rightHandle = new fabric.Rect({
-            left: trimEndX - handleWidth/2,
-            top: clipY,
-            width: handleWidth,
-            height: clipHeight,
+            left: trimEndX - TRIM_HANDLE_WIDTH / 2,
+            top: clipY - (TRIM_HANDLE_HEIGHT - CLIP_HEIGHT) / 2, // Center the taller handle
+            width: TRIM_HANDLE_WIDTH,
+            height: TRIM_HANDLE_HEIGHT,
             fill: '#ef4444',
             stroke: '#dc2626',
             strokeWidth: 2,
@@ -851,34 +958,36 @@ const Timeline: React.FC = () => {
             lockMovementY: true,
             hasControls: false,
             hasBorders: false,
+            cursor: 'ew-resize',
             clipId: clip.id,
             isTrimHandle: true,
             handleType: 'right',
-            clipStartX: clipX,
+            clipStartX: clipXVirtual, // Store virtual position for drag calculations
             clipWidth: clipWidth,
+            scaleX: 1, // Prevent any transforms
+            scaleY: 1,
           } as any);
           
           canvas.add(rightHandle);
         }
 
-        // Clip text - use Textbox for wrapping
-        const maxTextWidth = (clipWidth - 16) * zoom; // Account for padding and zoom
+        // Clip text - STATIC size regardless of zoom
         canvas.add(new fabric.Textbox(clip.name, {
           left: clipX + 8,
           top: clipY + 8,
-          width: maxTextWidth,
+          width: Math.max(clipWidth - 16, 50), // Ensure minimum width for text
           fontSize: 13,
           fill: '#ffffff',
           fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
           selectable: false,
           evented: false,
           clipId: clip.id,
-          zoomX: 1 / zoom,
-          zoomY: 1 / zoom,
+          zoomX: 1, // Keep text at fixed size
+          zoomY: 1,
           splitByGrapheme: true, // Better text wrapping
         } as any));
 
-        // Duration text
+        // Duration text - STATIC size
         canvas.add(new fabric.Text(formatTime(clipDuration), {
           left: clipX + 8,
           top: clipY + 30,
@@ -888,37 +997,87 @@ const Timeline: React.FC = () => {
           selectable: false,
           evented: false,
           clipId: clip.id,
-          zoomX: 1 / zoom,
-          zoomY: 1 / zoom,
+          zoomX: 1, // Keep text at fixed size
+          zoomY: 1,
         } as any));
 
         currentTime += clipDuration;
       });
 
-      // Draw playhead
+      // Draw time grid ABOVE clips - STATIC markers at top of canvas, using TIME_GRID_HEIGHT constant
+      let timeInterval = DEFAULT_TIME_INTERVAL;
+      const minSpacing = MIN_TIME_MARKER_SPACING;
+      const pixelsPerSecond = virtualTimelineWidth / totalDuration;
+      
+      // Adjust time interval based on zoom to keep markers readable
+      if (timeInterval * pixelsPerSecond < minSpacing) {
+        timeInterval = Math.ceil(minSpacing / pixelsPerSecond / 5) * 5;
+      }
+
+      console.log('Drawing timeline:', { virtualTimelineWidth, totalDuration, pixelsPerSecond, timeInterval, clampedScrollPosition });
+
+      for (let time = 0; time <= totalDuration; time += timeInterval) {
+        const xVirtual = (time / totalDuration) * virtualTimelineWidth;
+        const x = xVirtual - clampedScrollPosition; // Offset by clamped scroll position
+        
+        // Only render if visible in viewport (with buffer)
+        if (x < -100 || x > canvasWidth + 100) continue;
+
+        // Draw tick mark line (only in the time grid area) - using TIME_GRID_HEIGHT constant
+        canvas.add(new fabric.Line([x, 0, x, TIME_GRID_HEIGHT], {
+          stroke: '#333',
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+          scaleX: 1, // Prevent any transforms
+          scaleY: 1,
+        } as any));
+
+        // Draw time label
+        canvas.add(new fabric.Text(formatTime(time), {
+          left: x + 4,
+          top: 10,
+          fontSize: 12,
+          fill: '#666',
+          fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+          selectable: false,
+          evented: false,
+          scaleX: 1, // Prevent any transforms
+          scaleY: 1,
+        } as any));
+      }
+
+      // Draw playhead - FIXED size, positioned based on virtual timeline with scroll offset
       if (totalDuration > 0) {
-        const x = (playhead / totalDuration) * (canvas.width! / zoom);
+        const xVirtual = (playhead / totalDuration) * virtualTimelineWidth;
+        const x = xVirtual - clampedScrollPosition; // Offset by clamped scroll position
 
         // Create and store playhead objects for efficient updates
-        const line = new fabric.Line([x, 0, x, canvas.height!], {
+        // Playhead line with FIXED height
+        const line = new fabric.Line([x, 0, x, PLAYHEAD_LINE_HEIGHT], {
           stroke: '#ef4444',
           strokeWidth: 2,
           selectable: false,
           evented: false,
           playhead: true,
+          scaleX: 1, // Prevent any transforms
+          scaleY: 1,
         } as any);
         playheadLineRef.current = line;
         canvas.add(line);
 
+        // Playhead triangle with FIXED size
         const triangle = new fabric.Triangle({
-          left: x - 6,
+          left: x - PLAYHEAD_TRIANGLE_SIZE / 2,
           top: 0,
-          width: 12,
-          height: 12,
+          width: PLAYHEAD_TRIANGLE_SIZE,
+          height: PLAYHEAD_TRIANGLE_SIZE,
           fill: '#ef4444',
           selectable: false,
           evented: false,
           playhead: true,
+          scaleX: 1, // Prevent any transforms
+          scaleY: 1,
         } as any);
         playheadTriangleRef.current = triangle;
         canvas.add(triangle);
@@ -942,34 +1101,78 @@ const Timeline: React.FC = () => {
     canvas.renderAll();
     
     console.log('Canvas rendered - Playhead:', formatTime(playhead), 'Clips:', clips.length);
-  }, [clips, totalDuration, zoom, selectedClipId, tempTrimStart, tempTrimEnd]); // REMOVED playhead from dependencies!
+  }, [clips, totalDuration, zoom, selectedClipId, tempTrimStart, tempTrimEnd, scrollPosition]); // Added scrollPosition
 
   // OPTIMIZED EFFECT: Update ONLY playhead position without full canvas re-render
   useLayoutEffect(() => {
     const canvas = fabricCanvasRef.current;
-    if (!canvas || totalDuration === 0 || !playheadLineRef.current || !playheadTriangleRef.current) return;
+    if (!canvas || totalDuration === 0) return;
 
-    // Calculate new x position
-    const x = (playhead / totalDuration) * (canvas.width! / zoom);
+    // If playhead objects don't exist, find them from the canvas
+    if (!playheadLineRef.current || !playheadTriangleRef.current) {
+      const objects = canvas.getObjects();
+      const playheadLine = objects.find((obj: any) => obj.playhead === true && obj.type === 'line') as fabric.Line;
+      const playheadTriangle = objects.find((obj: any) => obj.playhead === true && obj.type === 'triangle') as fabric.Triangle;
+      
+      if (playheadLine && playheadTriangle) {
+        playheadLineRef.current = playheadLine;
+        playheadTriangleRef.current = playheadTriangle;
+        console.log('Found existing playhead objects');
+      } else {
+        console.log('Playhead objects not found, skipping update');
+        return;
+      }
+    }
 
-    // Update line position (set new coordinates)
+    // Calculate new x position in virtual timeline, then offset by scroll
+    const canvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+    const virtualTimelineWidth = canvasWidth * zoom;
+    const maxScroll = Math.max(0, virtualTimelineWidth - canvasWidth);
+    const clampedScrollPosition = Math.max(0, Math.min(scrollPosition, maxScroll));
+    
+    const xVirtual = (playhead / totalDuration) * virtualTimelineWidth;
+    const x = xVirtual - clampedScrollPosition; // Offset by clamped scroll position
+
+    console.log('Updating playhead position:', {
+      playhead,
+      xVirtual,
+      x,
+      clampedScrollPosition,
+      virtualTimelineWidth,
+      canvasWidth
+    });
+
+    // Update line position with FIXED height (set new coordinates)
     playheadLineRef.current.set({
       x1: x,
       y1: 0,
       x2: x,
-      y2: canvas.height,
+      y2: PLAYHEAD_LINE_HEIGHT, // Use constant instead of canvas.height
     });
 
-    // Update triangle position
+    // Update triangle position with FIXED size
     playheadTriangleRef.current.set({
-      left: x - 6,
+      left: x - PLAYHEAD_TRIANGLE_SIZE / 2,
     });
 
     // Only render the playhead objects, not the entire canvas
     playheadLineRef.current.setCoords();
     playheadTriangleRef.current.setCoords();
     canvas.requestRenderAll();
-  }, [playhead, totalDuration, zoom]); // Only playhead changes trigger this lightweight update
+    
+    // Auto-scroll to keep playhead in view ONLY when video is playing
+    // Don't auto-scroll during manual timeline interaction
+    const videoElement = document.querySelector('video');
+    const isVideoPlaying = videoElement && !videoElement.paused;
+    
+    if (isVideoPlaying) {
+      if (xVirtual < clampedScrollPosition + 50) {
+        setScrollPosition(Math.max(0, xVirtual - canvasWidth / 4));
+      } else if (xVirtual > clampedScrollPosition + canvasWidth - 50) {
+        setScrollPosition(Math.min(maxScroll, xVirtual - (canvasWidth * 3 / 4)));
+      }
+    }
+  }, [playhead, totalDuration, zoom, scrollPosition]); // Include scrollPosition
 
 
   return (
@@ -1090,12 +1293,166 @@ const Timeline: React.FC = () => {
                 </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden w-full flex items-center justify-center" style={{ width: 'calc(100vw - 24rem)', left: '0', paddingTop: '36px' }}>
+      <div className="flex-1 relative overflow-hidden w-full flex flex-col items-center justify-center" style={{ width: 'calc(100vw - 24rem)', left: '0', paddingTop: '36px' }}>
         <canvas 
           ref={canvasRef} 
-          className="w-full cursor-pointer" 
+          className="w-full cursor-pointer flex-1" 
           style={{ width: '100%', height: '100%' }}
         />
+        
+        {/* Horizontal Scrollbar - always visible when zoomed, fixed height */}
+        {zoom > 1 && totalDuration > 0 && (() => {
+          const canvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+          const virtualTimelineWidth = canvasWidth * zoom;
+          const maxScroll = Math.max(0, virtualTimelineWidth - canvasWidth);
+          
+          // Clamp scrollPosition to valid range for display
+          const displayScrollPosition = Math.max(0, Math.min(scrollPosition, maxScroll));
+          
+          // Calculate scrollbar position and width
+          const scrollbarThumbWidth = Math.max(20, (canvasWidth / virtualTimelineWidth) * 100); // Increased minimum width
+          const maxThumbPosition = 100 - scrollbarThumbWidth;
+          const scrollbarThumbPosition = maxScroll > 0 
+            ? (displayScrollPosition / maxScroll) * maxThumbPosition
+            : 0;
+          
+          // Ensure thumb is always visible and clickable
+          const finalThumbWidth = Math.max(20, scrollbarThumbWidth);
+          const finalThumbPosition = Math.max(0, Math.min(100 - finalThumbWidth, scrollbarThumbPosition));
+          
+          console.log('Scrollbar calculations:', {
+            canvasWidth,
+            virtualTimelineWidth,
+            maxScroll,
+            displayScrollPosition,
+            scrollbarThumbWidth,
+            maxThumbPosition,
+            scrollbarThumbPosition,
+            finalThumbWidth,
+            finalThumbPosition,
+            zoom,
+            totalDuration,
+            isScrollable: maxScroll > 0,
+            thumbVisible: finalThumbWidth > 0 && finalThumbPosition >= 0
+          });
+          
+          return (
+            <div 
+              className="w-full bg-gray-800 border-t border-gray-700 flex items-center px-2" 
+              style={{ height: `${SCROLLBAR_HEIGHT}px` }}
+            >
+              <div 
+                className="flex-1 h-2 bg-gray-700 rounded-full relative border border-gray-600 cursor-pointer"
+                onClick={(e) => {
+                  // Don't handle track clicks if we're dragging the thumb
+                  if (isDraggingScrollbar) return;
+                  
+                  // Handle clicking on the scrollbar track to jump to that position
+                  const trackRect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - trackRect.left;
+                  const trackWidth = e.currentTarget.clientWidth;
+                  const clickRatio = Math.max(0, Math.min(1, clickX / trackWidth));
+                  
+                  const currentCanvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+                  const currentVirtualTimelineWidth = currentCanvasWidth * zoom;
+                  const currentMaxScroll = Math.max(0, currentVirtualTimelineWidth - currentCanvasWidth);
+                  const newScroll = Math.round(clickRatio * currentMaxScroll);
+                  
+                  setScrollPosition(newScroll);
+                }}
+              >
+                <div 
+                  className="absolute h-full bg-blue-500 rounded-full cursor-pointer hover:bg-blue-400 transition-all duration-150 ease-out"
+                  style={{
+                    left: `${finalThumbPosition}%`,
+                    width: `${finalThumbWidth}%`,
+                    minWidth: '20px', // Ensure minimum clickable width
+                    minHeight: '8px', // Ensure minimum clickable height
+                    transform: isDraggingScrollbar ? 'scaleY(1.2)' : 'scaleY(1)',
+                    boxShadow: isDraggingScrollbar ? '0 2px 8px rgba(59, 130, 246, 0.4)' : 'none',
+                    zIndex: 10, // Ensure it's above other elements
+                    pointerEvents: 'auto' // Ensure it can receive mouse events
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDraggingScrollbar(true);
+                    
+                    // Store initial state - this is the standard scrollbar UX pattern
+                    const startMouseX = e.clientX;
+                    const startScroll = scrollPosition;
+                    const scrollbarTrackEl = e.currentTarget.parentElement!;
+                    const scrollbarTrackWidth = scrollbarTrackEl.clientWidth;
+                    
+                    // Calculate maxScroll once at the start
+                    const currentCanvasWidth = window.innerWidth - MEDIA_LIBRARY_WIDTH;
+                    const currentVirtualTimelineWidth = currentCanvasWidth * zoom;
+                    const currentMaxScroll = Math.max(0, currentVirtualTimelineWidth - currentCanvasWidth);
+                    
+                    // Calculate thumb width percentage to determine available scrollable area
+                    const thumbWidthPercent = Math.max(20, (currentCanvasWidth / currentVirtualTimelineWidth) * 100);
+                    const maxThumbPositionPercent = 100 - thumbWidthPercent;
+                    
+                    // The thumb can only move within maxThumbPositionPercent of the track
+                    const scrollableTrackWidth = (maxThumbPositionPercent / 100) * scrollbarTrackWidth;
+                    
+                    console.log('🎯 Scrollbar thumb drag started', { 
+                      startMouseX, 
+                      startScroll, 
+                      currentMaxScroll,
+                      scrollbarTrackWidth,
+                      thumbWidthPercent,
+                      maxThumbPositionPercent,
+                      scrollableTrackWidth,
+                      currentVirtualTimelineWidth,
+                      currentCanvasWidth,
+                      totalDuration,
+                      canScrollToEnd: currentMaxScroll > 0
+                    });
+                    
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      // Calculate how far the mouse has moved (delta-based approach)
+                      const mouseDelta = moveEvent.clientX - startMouseX;
+                      
+                      // Convert mouse delta to scroll delta
+                      // The ratio is: maxScroll / scrollable area of track (not full track width)
+                      const scrollableRatio = currentMaxScroll / scrollableTrackWidth;
+                      const scrollDelta = mouseDelta * scrollableRatio;
+                      
+                      // Calculate new scroll position based on where we started + how far we've moved
+                      const newScroll = startScroll + scrollDelta;
+                      
+                      // Clamp to valid range
+                      const clampedScroll = Math.max(0, Math.min(currentMaxScroll, newScroll));
+                      
+                      console.log('🔄 Scrollbar drag move', { 
+                        mouseDelta,
+                        scrollDelta,
+                        newScroll,
+                        clampedScroll,
+                        startScroll,
+                        currentMaxScroll,
+                        scrollableRatio
+                      });
+                      
+                      setScrollPosition(clampedScroll);
+                    };
+                    
+                    const handleMouseUp = () => {
+                      console.log('🛑 Scrollbar thumb drag ended');
+                      setIsDraggingScrollbar(false);
+                      window.removeEventListener('mousemove', handleMouseMove);
+                      window.removeEventListener('mouseup', handleMouseUp);
+                    };
+                    
+                    window.addEventListener('mousemove', handleMouseMove);
+                    window.addEventListener('mouseup', handleMouseUp);
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
