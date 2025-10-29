@@ -170,6 +170,35 @@ Add "Installation" section to README with macOS Gatekeeper bypass instructions. 
 
 ---
 
+## Phase 1.75: Critical Video Player & Trim Fixes (URGENT)
+
+**Priority:** MUST fix before Phase 2  
+**Document:** Post_PRD1_spec_middle.md (detailed specifications)  
+**Estimated Time:** 2.5 hours  
+**Risk Level:** LOW-MEDIUM - Well-understood issues with clear fix strategies
+
+**Background:** During MVP demo recording, critical video player and trim functionality issues were discovered. These break core user experience and must be fixed before proceeding with Phase 2 UI polish.
+
+### Issue #0: Video Player Timestamp/Progress Frozen (20 min) 🔴 CRITICAL
+**Problem:** Video plays but timestamp and progress bar remain frozen. Only "jump" forward when pausing.  
+**Root Cause:** Throttle effect with `[playhead]` dependency cancels interval on every 60fps update.  
+**Solution:** Remove throttling, pass raw playhead to VideoControls (already React.memo optimized).
+
+### Issues #1-4: Trim Workflow Fixes (65 min)
+- #1 & #2: totalDuration not recalculated after trim (15 min)
+- #3: Video keeps playing beyond timeline end (30 min)
+- #4: Playhead jumps after trim when pressing spacebar (10 min)
+
+### Issues #5 & #8: Trim UX Enhancements (75 min)
+- #5: Pause playback at trim borders during preview (45 min)
+- #8: Snap trim handles to 0.1s intervals (30 min)
+
+**All fixes documented in Post_PRD1_spec_middle.md with detailed root cause analysis.**
+
+**Phase 1.75 Checkpoint:** ✅ All issues fixed → Test thoroughly → Commit → Ready for Phase 2
+
+---
+
 ## Phase 2: High/Medium Risk UI Changes
 
 **Priority:** Implement carefully after Phase 1 & 1.5 complete  

@@ -3,6 +3,20 @@ import toast from 'react-hot-toast';
 import { fabric } from 'fabric';
 import { useTimelineStore } from '../store/timelineStore';
 
+// Trim snapping constants
+const TRIM_SNAP_INTERVAL = 0.1; // Snap to 0.1 second intervals
+const TRIM_SNAP_THRESHOLD = 0.05; // Snap if within 0.05s of interval
+
+// Helper function to snap value to nearest 0.1s interval
+const snapToInterval = (value: number): number => {
+  const snappedValue = Math.round(value / TRIM_SNAP_INTERVAL) * TRIM_SNAP_INTERVAL;
+  // Only snap if we're within the threshold
+  if (Math.abs(value - snappedValue) <= TRIM_SNAP_THRESHOLD) {
+    return snappedValue;
+  }
+  return value;
+};
+
 const Timeline: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
@@ -27,11 +41,49 @@ const Timeline: React.FC = () => {
   const [isApplyingTrim, setIsApplyingTrim] = React.useState(false);
   const [trimProgress, setTrimProgress] = React.useState<number>(0);
 
+  // Format time for tick marks and duration (whole seconds)
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Format time for playhead display (2 decimal places)
+  const formatPlayheadTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    const hundredths = Math.floor((seconds % 1) * 100);
+    return `${mins}:${secs.toString().padStart(2, '0')}.${hundredths.toString().padStart(2, '0')}`;
+  };
+
+  // Sync trim preview with trim handle positions
+  // This maintains trim preview even when clicking off (as long as clip is selected somewhere)
+  React.useEffect(() => {
+    if (selectedClipId) {
+      const clip = clips.find(c => c.id === selectedClipId);
+      if (clip) {
+        // Use temp trim values if available (during active trimming), otherwise use clip's actual values
+        const trimStart = tempTrimStart !== null ? tempTrimStart : clip.trimStart;
+        const trimEnd = tempTrimEnd !== null ? tempTrimEnd : (clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+        
+        // Always set trim preview when a clip is selected
+        useTimelineStore.getState().setTrimPreview({
+          clipId: clip.id,
+          start: trimStart,
+          end: trimEnd
+        });
+        
+        console.log('[Trim Preview Sync] Set for selected clip:', { 
+          clipId: clip.id, 
+          start: trimStart, 
+          end: trimEnd,
+          isTrimming,
+          hasTempValues: tempTrimStart !== null || tempTrimEnd !== null
+        });
+      }
+    }
+    // Don't clear when selectedClipId becomes null - let it persist
+  }, [selectedClipId, tempTrimStart, tempTrimEnd, clips, isTrimming]);
 
   // Split clip at current playhead
   const splitClipAtPlayhead = () => {
@@ -172,6 +224,7 @@ const Timeline: React.FC = () => {
         }
         
         // Update the clip with new trim values and new path
+        // updateClip will automatically recalculate totalDuration
         useTimelineStore.getState().updateClip(selectedClipId, {
           trimStart: 0,  // Reset to 0 since we've created a new trimmed file
           trimEnd: 0,    // Reset to 0 since the new file is already trimmed
@@ -180,20 +233,13 @@ const Timeline: React.FC = () => {
           previousTrimPath: result.outputPath! // Track this for future cleanup
         });
         
-        // Recalculate total duration after trim
-        const updatedClips = clips.map(c => 
-          c.id === selectedClipId 
-            ? { ...c, trimStart: 0, trimEnd: 0, path: result.outputPath!, duration: trimEnd - trimStart }
-            : c
-        );
-        
-        const newTotalDuration = updatedClips.reduce((sum, c) => {
-          const duration = c.trimEnd > 0 ? c.trimEnd - c.trimStart : c.duration - c.trimStart;
-          return sum + duration;
-        }, 0);
-        
-        // Update total duration in store
-        useTimelineStore.setState({ totalDuration: newTotalDuration });
+        // Adjust playhead if it's now beyond the new totalDuration
+        const newTotalDuration = useTimelineStore.getState().totalDuration;
+        const currentPlayhead = useTimelineStore.getState().playhead;
+        if (currentPlayhead > newTotalDuration) {
+          console.log('[Trim] Adjusting playhead from', currentPlayhead, 'to', newTotalDuration);
+          useTimelineStore.getState().setPlayhead(newTotalDuration);
+        }
         
         setTempTrimStart(null);
         setTempTrimEnd(null);
@@ -201,8 +247,12 @@ const Timeline: React.FC = () => {
         setIsApplyingTrim(false);
         setTrimProgress(0);
         
+        // Clear trim preview state
+        useTimelineStore.getState().setTrimPreview(null);
+        
         const newDuration = trimEnd - trimStart;
-        console.log('Trim applied successfully, new clip duration:', newDuration, 'new total duration:', newTotalDuration);
+        const updatedTotalDuration = useTimelineStore.getState().totalDuration;
+        console.log('Trim applied successfully, new clip duration:', newDuration, 'new total duration:', updatedTotalDuration);
         toast.success(`✓ Trim applied successfully! New duration: ${formatTime(newDuration)}`);
       } else {
         console.error('Trim failed:', result.error);
@@ -222,6 +272,10 @@ const Timeline: React.FC = () => {
     setTempTrimStart(null);
     setTempTrimEnd(null);
     setIsTrimming(false);
+    
+    // Clear trim preview state
+    useTimelineStore.getState().setTrimPreview(null);
+    
     console.log('Cancelled trim');
   };
 
@@ -346,7 +400,7 @@ const Timeline: React.FC = () => {
           
           setPlayhead(newTime);
           console.log('Playhead set to:', newTime);
-          // Exit trim mode when clicking empty space
+          // Exit trim mode when clicking empty space (but keep trim preview active for selected clip)
           setIsTrimming(false);
         } else {
           console.log('Clicked on object:', event.target);
@@ -366,14 +420,36 @@ const Timeline: React.FC = () => {
               const currentClips = currentState.clips;
               const clip = currentClips.find(c => c.id === target.clipId);
               if (clip) {
-                setTempTrimStart(clip.trimStart);
-                setTempTrimEnd(clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+                const trimStart = clip.trimStart;
+                const trimEnd = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
+                setTempTrimStart(trimStart);
+                setTempTrimEnd(trimEnd);
+                
+                // Set trim preview so video pauses at boundaries
+                useTimelineStore.getState().setTrimPreview({
+                  clipId: clip.id,
+                  start: trimStart,
+                  end: trimEnd
+                });
+                
                 console.log('Initialized trim values for newly selected clip:', { 
-                  tempTrimStart: clip.trimStart, 
-                  tempTrimEnd: clip.trimEnd > 0 ? clip.trimEnd : clip.duration 
+                  tempTrimStart: trimStart, 
+                  tempTrimEnd: trimEnd 
                 });
               }
             } else {
+              // Same clip - update trim preview with current temp values
+              const clip = currentState.clips.find(c => c.id === target.clipId);
+              if (clip) {
+                const trimStart = tempTrimStart !== null ? tempTrimStart : clip.trimStart;
+                const trimEnd = tempTrimEnd !== null ? tempTrimEnd : (clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+                
+                useTimelineStore.getState().setTrimPreview({
+                  clipId: clip.id,
+                  start: trimStart,
+                  end: trimEnd
+                });
+              }
               console.log('Same clip clicked - preserving existing trim values');
             }
             console.log('Selected clip and started trim mode:', target.clipId);
@@ -455,7 +531,8 @@ const Timeline: React.FC = () => {
 
           // Calculate new trim start (relative to clip start)
           const relativeTime = newTime - clipStartTime;
-          const newTrimStart = Math.max(0, Math.min(relativeTime, clip.duration));
+          const rawTrimStart = Math.max(0, Math.min(relativeTime, clip.duration));
+          const newTrimStart = snapToInterval(rawTrimStart); // Apply snapping
           setTempTrimStart(newTrimStart);
           
           // Ensure trimEnd is also set
@@ -492,6 +569,14 @@ const Timeline: React.FC = () => {
           
           canvas.renderAll();
           
+          // Update trim preview state for video playback boundary checking
+          const currentTrimEnd = tempTrimEnd !== null ? tempTrimEnd : (clip.trimEnd > 0 ? clip.trimEnd : clip.duration);
+          useTimelineStore.getState().setTrimPreview({
+            clipId: clip.id,
+            start: newTrimStart,
+            end: currentTrimEnd
+          });
+          
           console.log('Left trim handle preview:', { newTrimStart, clipDuration: clip.duration, playhead: newPlayheadTime });
         } else if (target.handleType === 'right') {
           // Constrain to clip bounds
@@ -501,7 +586,8 @@ const Timeline: React.FC = () => {
 
           // Calculate new trim end (relative to clip start)
           const relativeTime = newTime - clipStartTime;
-          const newTrimEnd = Math.max(0, Math.min(relativeTime, clip.duration));
+          const rawTrimEnd = Math.max(0, Math.min(relativeTime, clip.duration));
+          const newTrimEnd = snapToInterval(rawTrimEnd); // Apply snapping
           setTempTrimEnd(newTrimEnd);
           
           // Ensure trimStart is also set
@@ -537,6 +623,14 @@ const Timeline: React.FC = () => {
           }
           
           canvas.renderAll();
+          
+          // Update trim preview state for video playback boundary checking
+          const currentTrimStart = tempTrimStart !== null ? tempTrimStart : clip.trimStart;
+          useTimelineStore.getState().setTrimPreview({
+            clipId: clip.id,
+            start: currentTrimStart,
+            end: newTrimEnd
+          });
           
           console.log('Right trim handle preview:', { newTrimEnd, clipDuration: clip.duration, playhead: newPlayheadTime });
         }
@@ -889,7 +983,7 @@ const Timeline: React.FC = () => {
             Clips: {clips.length}
           </span>
           <span className="text-sm text-gray-400">
-            Playhead: {formatTime(playhead)}
+            Playhead: {formatPlayheadTime(playhead)}
           </span>
         </div>
         

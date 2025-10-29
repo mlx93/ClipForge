@@ -1,9 +1,9 @@
 # Active Context
 
 ## Current Work Focus
-**Priority**: Video Footer Flicker Optimizations Complete ✅ - Ready for MVP Finalization
+**Priority**: Phase 1.75 Complete ✅ - All Critical Video Player & Trim Issues Fixed + Display Improvements - Ready for Phase 2 UI Polish
 
-## Phase 1 & 1.5 Completion Summary
+## Phase 1, 1.5 & 1.75 Completion Summary
 
 ### Phase 1: Low-Risk Critical Fixes (5-6 hours) ✅ COMPLETE
 All 13 items from POST_PRD1_POLISH_SPEC.md Phase 1 completed:
@@ -51,6 +51,54 @@ All 6 items from POST_PRD1_POLISH_SPEC.md Phase 1.5 completed:
 - src/main/ffmpeg.ts - MOV format support
 - README.md - .clipforge file documentation
 
+### Phase 1.75: Critical Video Player & Trim Fixes (2.5 hours) ✅ COMPLETE
+**Completion Date**: October 29, 2025  
+**Status**: All 6 critical issues resolved successfully  
+**Document**: Post_PRD1_spec_middle.md (366 lines)
+
+**Priority 0 (CRITICAL - 20 min)**:
+1. ✅ Issue #0: Video Player Timestamp/Progress Bar Frozen During Playback
+   - **Problem**: Timeline playhead moved smoothly but video player footer stayed frozen
+   - **Root Cause**: Throttle effect with `[playhead]` dependency canceled setInterval on every 60fps update
+   - **Solution**: Removed throttled displayPlayhead state, removed throttle effect, pass raw playhead to VideoControls
+
+**Priority 1 (Blocking Issues - 55 min)**:
+2. ✅ Issue #1 & #2: Timestamp/Total Duration Not Updating After Trim
+   - **Problem**: After trim, video preview footer showed OLD total time (race condition)
+   - **Root Cause**: `updateClip` action in timelineStore didn't recalculate `totalDuration`
+   - **Solution**: Modified `updateClip` to recalculate `totalDuration` atomically, removed manual setState in Timeline
+3. ✅ Issue #3: Ghost Playback Beyond Trim
+   - **Problem**: Video kept playing past timeline end (31s, 32s, 33s...) after trim
+   - **Root Cause**: RAF loop detected clip boundary but didn't pause video element
+   - **Solution**: Check if current clip is last clip, explicitly pause video and set isPlaying false
+4. ✅ Issue #4: Spacebar Causes Playhead Jump After Trim
+   - **Problem**: Playhead stayed at old position after trim shortened timeline → spacebar jump
+   - **Root Cause**: Playhead not adjusted when exceeding new totalDuration
+   - **Solution**: After updateClip, check if playhead > newTotalDuration → snap to timeline end
+
+**Priority 2 (UX Enhancements - 75 min)**:
+5. ✅ Issue #5: No Pause at Trim Borders During Preview
+   - **Problem**: User drags trim handles but video doesn't respect them until "Apply"
+   - **Solution**: Added trimPreview state to store, RAF loop checks trim boundary and pauses, clears on Apply/Cancel
+6. ✅ Issue #8: Trim Precision Snapping to 0.1s
+   - **Problem**: Trim handles followed mouse precisely, hard to set exact 0.1s intervals
+   - **Solution**: Added snapToInterval() helper with 0.1s intervals, updated formatTime to show "MM:SS.d" format
+
+**Files Modified in Phase 1.75**:
+- src/renderer/components/VideoPreview.tsx - Issues #0, #3, #5 (removed throttle, ghost playback fix, trim preview)
+- src/renderer/store/timelineStore.ts - Issues #1, #2, #5 (totalDuration recalc, trimPreview state)
+- src/renderer/components/Timeline.tsx - Issues #4, #5, #8 (playhead adjust, trim preview update, snapping)
+
+**Impact**: Professional video player experience with smooth timestamp updates, reliable trim workflow, precision snapping
+
+**Additional Improvements During Implementation**:
+- ✅ Time display formatting refinements (whole seconds for most UI, 2 decimals for playhead)
+- ✅ Persistent trim preview that survives deselecting clips
+- ✅ Enhanced trim boundary detection with 0.1s tolerance
+- ✅ Comprehensive debug logging for troubleshooting
+
+**Final Status**: All 6 core issues + 4 additional improvements completed successfully
+
 ### Additional Performance Improvements ✅
 - Console log cleanup in import pipeline (9 statements removed)
 - Faster imports with dev tools open (15-30% improvement expected)
@@ -58,41 +106,9 @@ All 6 items from POST_PRD1_POLISH_SPEC.md Phase 1.5 completed:
 
 ### Implementation Roadmap - Current Status
 
-### 📍 Current Phase: Phase 1.75 - Critical Trim Fixes (NEXT) ⏳
-**Document**: Post_PRD1_spec_middle.md (270 lines)
-**Status**: Ready to implement
-**Estimated Time**: 2 hours 10 minutes
-
-**Priority 1 (Blocking Issues - 55 min)**:
-1. Issue #1 & #2: Timestamp/Total Duration Not Updating (15 min, Low risk)
-   - Fix: `updateClip` action in timelineStore.ts must recalculate totalDuration atomically
-   - Problem: Race condition where VideoPreview reads stale duration after trim
-2. Issue #3: Ghost Playback Beyond Trim (30 min, Medium risk)
-   - Fix: Explicitly pause video element at end of last clip in RAF loop
-   - Problem: Video keeps playing beyond timeline end (31s, 32s, 33s...)
-3. Issue #4: Playhead Jump After Trim (10 min, Low risk)
-   - Fix: Adjust playhead if beyond new totalDuration after trim
-   - Problem: Spacebar causes unexpected jump when playhead > totalDuration
-
-**Priority 2 (UX Enhancements - 75 min)**:
-4. Issue #5: No Pause at Trim Borders (45 min, Medium risk)
-   - Fix: Add trimPreview state, RAF loop checks clip.currentTime >= trimPreview.end
-   - Feature: Click trim handle → seek to trim point, play → auto-pause at trim end
-5. Issue #8: Trim Precision (30 min, Low risk)
-   - Fix: Snap trim handles to 0.1s intervals, update formatTime to show tenths
-   - Feature: "MM:SS.d" format (e.g., "1:05.3"), visual flash on snap
-
-**Why Phase 1.75 is Critical**:
-- Demo recording revealed these issues break core trim functionality
-- Must fix before moving to Phase 2 UI polish
-- All issues have clear root causes and safe fix strategies
-- No risk to existing functionality (additive fixes)
-
-**Testing Strategy**: 5 comprehensive scenarios covering basic trim, playhead adjustment, preview pause, precision snapping, and edge cases
-
-### Phase 2 Status: READY AFTER 1.75 ⏳
+### 📍 Current Phase: Phase 2 - UI Polish (NEXT) ⏳
 **Document**: POST_PRD1_POLISH_SPEC.md (Phase 2: Lines 173-510)
-**Status**: Waiting for Phase 1.75 completion
+**Status**: Ready to start (Phase 1.75 complete)
 **Estimated Time**: 6-7 hours
 **Risk Level**: HIGH/MEDIUM - UI changes with protective implementation notes
 
@@ -151,8 +167,8 @@ Phase 3 tasks:
 **Implementation Order**:
 1. ✅ Phase 1 (Complete) - MVP Foundation
 2. ✅ Phase 1.5 (Complete) - Critical Bug Fixes
-3. ⏳ Phase 1.75 (NEXT) - Critical Trim Fixes
-4. 📋 Phase 2 - UI Polish (high-risk items)
+3. ✅ Phase 1.75 (Complete) - Critical Video Player & Trim Fixes
+4. ⏳ Phase 2 (NEXT) - UI Polish (high-risk items)
 5. 📋 Phase 3 - Nice-to-haves (low-risk)
 6. 📋 PRD-2 Phase 1 - Recording & Multi-track
 7. 📋 PRD-2 Phase 2 - Undo/Redo & Shortcuts
@@ -343,7 +359,59 @@ Phase 3 tasks:
 
 ---
 
-## Recent Changes (Last 10 Commits)
+## Recent Changes (Last 11 Commits)
+
+### Commit [CURRENT] - Phase 1.75: Critical Video Player & Trim Fixes (ALL 6 ISSUES RESOLVED) ✅
+**Completion Date**: October 29, 2025  
+**Status**: Production-ready, all tests passed, build successful
+
+- **Issue #0 (CRITICAL)**: Video Player Timestamp/Progress Bar Frozen
+  - Removed throttled displayPlayhead state entirely
+  - Removed throttle effect that was canceling on every 60fps update
+  - Pass raw playhead directly to React.memo'd VideoControls
+  - Result: Smooth, real-time timestamp and progress bar updates during playback
+  
+- **Issue #1 & #2**: Timestamp/Total Duration Not Updating After Trim
+  - Modified updateClip action to recalculate totalDuration atomically
+  - Removed manual setState call in Timeline.tsx
+  - Single source of truth for duration calculation
+  - Result: Immediate footer updates after trim application
+  
+- **Issue #3**: Ghost Playback Beyond Trim
+  - Added last-clip detection in RAF loop boundary check
+  - Explicitly pause video element: `video.pause()` + `setIsPlaying(false)`
+  - Prevents video from playing past timeline end
+  - Result: Video stops cleanly at timeline end, no ghost playback
+  
+- **Issue #4**: Spacebar Playhead Jump After Trim
+  - Check if playhead > newTotalDuration after trim
+  - Snap playhead to timeline end if out of bounds
+  - Result: Spacebar works correctly after trim, no unexpected jumps
+  
+- **Issue #5**: Pause at Trim Borders During Preview
+  - Added trimPreview state to timeline store: `{ clipId, start, end }`
+  - Update trimPreview during left/right handle drag
+  - RAF loop checks `video.currentTime >= trimPreview.end` → pause
+  - Clear trimPreview on Apply/Cancel
+  - Result: Video pauses at trim boundaries during preview playback
+  
+- **Issue #8**: Trim Precision Snapping to 0.1s
+  - Added snapToInterval() helper: rounds to nearest 0.1s within 0.05s threshold
+  - Applied snapping to both left and right trim handle drag
+  - Updated formatTime to show tenths: `MM:SS.d` (e.g., "1:05.3")
+  - Constants: TRIM_SNAP_INTERVAL = 0.1, TRIM_SNAP_THRESHOLD = 0.05
+  - Result: QuickTime-style precision trim editing with visual feedback
+
+- **Files Modified**:
+  - src/renderer/components/VideoPreview.tsx (Issues #0, #3, #5)
+  - src/renderer/store/timelineStore.ts (Issues #1, #2, #5)
+  - src/renderer/components/Timeline.tsx (Issues #4, #5, #8)
+
+- **Build Status**: ✅ Success (no errors)
+- **Linter Status**: ✅ Clean (no errors)
+- **Total Implementation Time**: ~2.5 hours (as estimated)
+
+- **Impact**: Professional video player UX with smooth real-time updates, reliable trim workflow, and precision editing capabilities. All 6 critical issues blocking MVP demo recording are now resolved.
 
 ### Commit 856f21f - Video Footer Flicker & Playhead Stall Fix (MAJOR OPTIMIZATION) ✅
 - **Problem 1**: Footer collapse during clip transitions

@@ -14,6 +14,10 @@ interface TimelineStore extends TimelineState {
   splitClip: (clipId: string, splitTime: number) => void;
   clearTimeline: () => void;
   
+  // Trim preview state
+  trimPreview: { clipId: string; start: number; end: number } | null;
+  setTrimPreview: (preview: { clipId: string; start: number; end: number } | null) => void;
+  
   // Computed values
   getTotalDuration: () => number;
   getClipAtTime: (time: number) => Clip | null;
@@ -27,6 +31,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
   selectedClipId: null,
   totalDuration: 0,
   zoom: 1,
+  trimPreview: null,
 
   // Actions
   addClips: (newClips: Clip[]) => {
@@ -64,11 +69,22 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
   },
 
   updateClip: (clipId: string, updates: Partial<Clip>) => {
-    set((state) => ({
-      clips: state.clips.map(clip => 
+    set((state) => {
+      const updatedClips = state.clips.map(clip => 
         clip.id === clipId ? { ...clip, ...updates } : clip
-      )
-    }));
+      );
+      
+      // Recalculate totalDuration after updating clip
+      const totalDuration = updatedClips.reduce((sum, clip) => {
+        const duration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : clip.duration - clip.trimStart;
+        return sum + duration;
+      }, 0);
+      
+      return {
+        clips: updatedClips,
+        totalDuration
+      };
+    });
   },
 
 
@@ -133,6 +149,10 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
 
       return { clips: newClips };
     });
+  },
+
+  setTrimPreview: (preview: { clipId: string; start: number; end: number } | null) => {
+    set({ trimPreview: preview });
   },
 
   clearTimeline: () => {

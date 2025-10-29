@@ -25,9 +25,6 @@ const VideoPreview: React.FC = () => {
   const [hasError, setHasError] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState('');
   
-  // Throttled playhead for UI display (prevents 60fps re-renders of controls)
-  const [displayPlayhead, setDisplayPlayhead] = React.useState(0);
-  
   // Stable reference to current clip info to prevent RAF loop restarts
   const currentClipInfoRef = useRef<ClipInfo | null>(null);
   // DERIVED STATE: Calculate during render, not in useEffect
@@ -330,6 +327,85 @@ const VideoPreview: React.FC = () => {
 
       const timelineTime = clipInfo.clipStartTime + (video.currentTime - clip.trimStart);
       
+      // Check for trim boundaries - prioritize in this order:
+      // 1. trimPreview (active drag state)
+      // 2. Clip's actual applied trim values
+      const trimPreview = useTimelineStore.getState().trimPreview;
+      let effectiveTrimStart = clip.trimStart;
+      let effectiveTrimEnd = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
+      let checkTrimBoundaries = false;
+      let sourceDescription = 'none';
+      
+      // Always use trim preview if it exists for this clip
+      if (trimPreview && trimPreview.clipId === clip.id) {
+        effectiveTrimStart = trimPreview.start;
+        effectiveTrimEnd = trimPreview.end;
+        checkTrimBoundaries = true;
+        sourceDescription = 'trimPreview';
+      } 
+      // Otherwise, check if clip has actual trim values applied (from previous Apply)
+      else if (clip.trimStart !== 0 || (clip.trimEnd > 0 && clip.trimEnd !== clip.duration)) {
+        checkTrimBoundaries = true;
+        sourceDescription = 'clip values';
+      }
+      
+      // Only check boundaries if trim is active (not at default positions)
+      const isTrimActive = effectiveTrimStart !== 0 || effectiveTrimEnd !== clip.duration;
+      
+      // Debug logging every 30 frames (~0.5 seconds)
+      if (Math.random() < 0.033) {
+        console.log('[Trim Debug]', {
+          clipId: clip.id,
+          clipName: clip.name,
+          currentTime: video.currentTime.toFixed(2),
+          effectiveTrimStart: effectiveTrimStart.toFixed(2),
+          effectiveTrimEnd: effectiveTrimEnd.toFixed(2),
+          clipActualTrimStart: clip.trimStart.toFixed(2),
+          clipActualTrimEnd: (clip.trimEnd || clip.duration).toFixed(2),
+          clipDuration: clip.duration.toFixed(2),
+          isTrimActive,
+          checkTrimBoundaries,
+          source: sourceDescription,
+          hasTrimPreview: !!trimPreview,
+          trimPreviewClipId: trimPreview?.clipId,
+          isBeforeStart: video.currentTime < effectiveTrimStart,
+          isAfterEnd: video.currentTime >= effectiveTrimEnd
+        });
+      }
+      
+      if (checkTrimBoundaries && isTrimActive) {
+        // Use a small tolerance (0.1s) to catch boundary crossings
+        const BOUNDARY_TOLERANCE = 0.1;
+        
+        // Check if we've crossed outside the valid trim region
+        if (video.currentTime < effectiveTrimStart - BOUNDARY_TOLERANCE) {
+          // Playing before trim start - pause at trim start
+          console.log('[Trim Boundary] Before trim start:', {
+            currentTime: video.currentTime,
+            trimStart: effectiveTrimStart,
+            source: sourceDescription
+          });
+          video.pause();
+          video.currentTime = effectiveTrimStart;
+          setIsPlaying(false);
+          playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
+          return;
+        } else if (video.currentTime >= effectiveTrimEnd - BOUNDARY_TOLERANCE) {
+          // Playing past trim end - pause at trim end
+          console.log('[Trim Boundary] Reached trim end:', {
+            currentTime: video.currentTime,
+            trimEnd: effectiveTrimEnd,
+            difference: video.currentTime - effectiveTrimEnd,
+            source: sourceDescription
+          });
+          video.pause();
+          video.currentTime = effectiveTrimEnd;
+          setIsPlaying(false);
+          playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
+          return;
+        }
+      }
+      
       // Check if we've reached the end of the current clip
       const clipEndTime = clipInfo.clipStartTime + clipInfo.clipDuration;
       const clipEndVideoTime = clip.trimEnd > 0 ? clip.trimEnd : clip.duration;
@@ -342,6 +418,17 @@ const VideoPreview: React.FC = () => {
           videoCurrentTime: video.currentTime,
           clipEndVideoTime
         });
+        
+        // Check if this is the last clip
+        const currentClipIndex = useTimelineStore.getState().clips.findIndex(c => c.id === clip.id);
+        const isLastClip = currentClipIndex === useTimelineStore.getState().clips.length - 1;
+        
+        if (isLastClip) {
+          // Last clip - explicitly pause the video element to prevent ghost playback
+          console.log('[Clip Boundary] Last clip reached - pausing video element');
+          video.pause();
+          setIsPlaying(false);
+        }
         
         // Call handleEnded via ref to avoid making it a dependency
         if (handleEndedRef.current) {
@@ -374,16 +461,6 @@ const VideoPreview: React.FC = () => {
       }
     };
   }, [isPlaying]); // Only depend on isPlaying, not currentClip or currentClipInfo!
-
-  // EFFECT 4: Throttle playhead updates for UI display (reduce footer re-renders from 60fps to ~15fps)
-  useEffect(() => {
-    // Update display playhead at most 15 times per second (every ~67ms)
-    const throttleInterval = setInterval(() => {
-      setDisplayPlayhead(playhead);
-    }, 67);
-
-    return () => clearInterval(throttleInterval);
-  }, [playhead]);
 
   // Helper function for relative seeking
   const seekRelative = useCallback((seconds: number) => {
@@ -509,7 +586,7 @@ const VideoPreview: React.FC = () => {
       {/* Controls - Memoized to prevent re-render when video changes */}
       <VideoControls
         isPlaying={isPlaying}
-        playhead={displayPlayhead}
+        playhead={playhead}
         totalDuration={totalDuration}
         currentClipName={currentClipName}
         onTogglePlayPause={togglePlayPause}

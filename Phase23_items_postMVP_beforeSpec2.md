@@ -4,6 +4,14 @@ From POST_PRD1_POLISH_SPEC.md:
 
 
 0.5 - When the Clips get trimmed, the video preview footer needs to update state and display the new times (total time and current time of the video)
+Video footer not responsive anymore to trim. (both in timestamp/total time and it's not cutting off the media clip to a shorter lenght - reponsiveness of the timestamp/total time is lacking, and the clip keeps playing what was trimmed off even after getting to the end of the timeline)
+When I press space bar, I lose the play header to the end of the clip?
+Video should stop playing when it hits video trim - to show user where video will stop
+
+Audio Button - PRD2
+Overlays - PRD2
+See Post PRD1 spec middle md for the list of improvements we are going to make above.
+
 
 1. Fix Timeline Zoom Implementation (2-3 hours) ⚠️ HIGH RISK
 Standardize zoom formula calculations (some multiply, some divide)

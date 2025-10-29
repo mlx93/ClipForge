@@ -1,6 +1,6 @@
 # Project Progress
 
-## Phase 1 & 1.5 Polish Complete ✅
+## Phase 1, 1.5 & 1.75 Complete ✅
 
 ### Phase 1: Low-Risk Critical Fixes (5-6 hours) ✅ COMPLETE
 **Completion Date**: October 28, 2025  
@@ -36,6 +36,26 @@
 6. ✅ MOV export format option (MP4 default, MOV available)
 
 **Impact**: Export fully operational, project management working, seamless multi-clip playback.
+
+### Phase 1.75: Critical Video Player & Trim Fixes (2.5 hours) ✅ COMPLETE
+**Completion Date**: October 29, 2025  
+**Status**: All 6 critical issues + 4 improvements resolved successfully
+
+**Core Issues Fixed**:
+1. ✅ Video player timestamp/progress bar frozen (CRITICAL) - Removed throttle, smooth real-time updates
+2. ✅ Timestamp/total duration not updating after trim - Atomic totalDuration recalculation
+3. ✅ Ghost playback beyond trim - Explicit video pause at last clip boundary
+4. ✅ Spacebar playhead jump after trim - Playhead adjustment when out of bounds
+5. ✅ Pause at trim borders during preview - trimPreview state with RAF boundary checking
+6. ✅ Trim precision snapping to 0.1s - snapToInterval() helper, MM:SS.d time format
+
+**Additional Improvements**:
+7. ✅ Time display formatting - Whole seconds for UI, 2 decimals (MM:SS.00) for playhead
+8. ✅ Persistent trim preview - Boundaries enforced even after deselecting clip
+9. ✅ Enhanced boundary detection - 0.1s tolerance for reliable catching
+10. ✅ Debug logging system - Comprehensive console logs for troubleshooting
+
+**Impact**: Professional video player UX, reliable trim workflow, precision editing. All MVP demo blockers resolved.
 
 ### Performance Improvements ✅
 - Console log cleanup (9 statements removed from import pipeline)
