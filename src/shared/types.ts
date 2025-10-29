@@ -1,5 +1,13 @@
 // Core data types for ClipForge
 
+export interface ClipMetadata {
+  duration: number;        // seconds
+  resolution: string;      // "1920x1080"
+  fileSize: number;        // bytes
+  codec?: string;          // "H.264", "VP9" (optional)
+  frameRate?: number;      // 30, 60 (optional)
+}
+
 export interface Clip {
   id: string;
   name: string;
@@ -14,6 +22,7 @@ export interface Clip {
   trimEnd: number; // trim end offset in seconds (0 = no trim)
   thumbnailPath?: string; // path to generated thumbnail
   previousTrimPath?: string; // path to previous trimmed file (for cleanup)
+  metadata?: ClipMetadata; // structured metadata object (optional for backward compatibility)
 }
 
 export interface TimelineState {

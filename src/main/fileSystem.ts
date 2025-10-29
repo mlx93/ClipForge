@@ -6,7 +6,7 @@ import { promisify } from 'util';
 const ffmpeg = require('fluent-ffmpeg');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
-import { Clip, VideoMetadata } from '@shared/types';
+import { Clip, VideoMetadata, ClipMetadata } from '@shared/types';
 import { MAX_FILE_SIZE, ERROR_MESSAGES, SUPPORTED_VIDEO_EXTENSIONS } from '@shared/constants';
 
 // Set FFmpeg path
@@ -36,6 +36,15 @@ export const importVideos = async (filePaths: string[]): Promise<Clip[]> => {
       // Extract video metadata using FFmpeg
       const metadata = await getVideoMetadata(filePath);
       
+      // Create structured metadata object
+      const clipMetadata: ClipMetadata = {
+        duration: metadata.duration,
+        resolution: `${metadata.width}x${metadata.height}`,
+        fileSize: stats.size,
+        codec: metadata.codec,
+        frameRate: metadata.frameRate
+      };
+      
       // Create clip object
       const clip: Clip = {
         id: generateClipId(),
@@ -49,7 +58,8 @@ export const importVideos = async (filePaths: string[]): Promise<Clip[]> => {
         fileSize: stats.size,
         trimStart: 0,
         trimEnd: 0, // 0 means no trim (use full duration)
-        thumbnailPath: undefined // Will be generated on demand
+        thumbnailPath: undefined, // Will be generated on demand
+        metadata: clipMetadata
       };
 
       clips.push(clip);

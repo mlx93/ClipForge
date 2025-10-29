@@ -35,6 +35,9 @@ const App: React.FC = () => {
   const isSavingRef = React.useRef(false);
 
   useEffect(() => {
+    // Load session data from localStorage first
+    loadSession();
+    
     // Check for session recovery on app start
     if (hasRecoveryData()) {
       setShowSessionRecovery(true);

@@ -30,8 +30,11 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
   };
 
   const formatFileSize = (bytes: number): string => {
-    const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(1)} MB`;
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Generate video preview on hover
@@ -230,16 +233,39 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
                 {clip.name}
               </h3>
               <div className="text-sm text-gray-400 space-y-1">
-                <div className="flex items-center space-x-2">
-                  <span>{formatDuration(clip.duration)}</span>
-                  <span>•</span>
-                  <span>{clip.width}×{clip.height}</span>
-                  <span>•</span>
-                  <span>{clip.frameRate}fps</span>
-                </div>
-                <div className="text-xs text-gray-500">
-                  {formatFileSize(clip.fileSize)} • {clip.codec}
-                </div>
+                {/* Use metadata if available, fallback to direct properties for backward compatibility */}
+                {clip.metadata ? (
+                  <>
+                    <div className="flex items-center space-x-2">
+                      <span>{formatDuration(clip.metadata.duration)}</span>
+                      <span>•</span>
+                      <span>{clip.metadata.resolution}</span>
+                      {clip.metadata.frameRate && (
+                        <>
+                          <span>•</span>
+                          <span>{clip.metadata.frameRate}fps</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {formatFileSize(clip.metadata.fileSize)}
+                      {clip.metadata.codec && ` • ${clip.metadata.codec}`}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center space-x-2">
+                      <span>{formatDuration(clip.duration)}</span>
+                      <span>•</span>
+                      <span>{clip.width}×{clip.height}</span>
+                      <span>•</span>
+                      <span>{clip.frameRate}fps</span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {formatFileSize(clip.fileSize)} • {clip.codec}
+                    </div>
+                  </>
+                )}
                 {(clip.trimStart > 0 || clip.trimEnd > 0) && (
                   <div className="text-xs text-yellow-400">
                     Trimmed: {formatDuration(clip.trimStart)} - {formatDuration(clip.trimEnd || clip.duration)}

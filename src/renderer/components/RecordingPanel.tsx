@@ -1235,7 +1235,14 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
           fileSize: recordingBlob.size,
           trimStart: 0,
           trimEnd: actualRecordingTime > 0 ? actualRecordingTime : 0, // Use 0 if duration is 0
-          thumbnailPath: undefined // Will be generated later
+          thumbnailPath: undefined, // Will be generated later
+          metadata: {
+            duration: actualRecordingTime,
+            resolution: `${settings.resolution.width}x${settings.resolution.height}`,
+            fileSize: recordingBlob.size,
+            codec: 'mp4',
+            frameRate: settings.frameRate
+          }
         };
         
         console.log('[Recording] Created clip object:', clip);
