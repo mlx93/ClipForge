@@ -57,8 +57,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getRecordingSources: (): Promise<{ success: boolean; sources?: any[]; error?: string }> => 
     ipcRenderer.invoke(IPC_CHANNELS.GET_RECORDING_SOURCES),
 
-  startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }): Promise<{ success: boolean; constraints?: any; error?: string }> => 
+  startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }): Promise<{ success: boolean; constraints?: any; isWebcam?: boolean; error?: string }> => 
     ipcRenderer.invoke(IPC_CHANNELS.START_RECORDING, params),
+
+  saveRecording: (arrayBuffer: ArrayBuffer): Promise<{ success: boolean; filePath?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SAVE_RECORDING, arrayBuffer),
 
   // Listen for events from main process
   onImportVideos: (callback: (filePaths: string[]) => void) => 
@@ -95,10 +98,14 @@ declare global {
       trimVideo: (inputPath: string, outputPath: string, trimStart: number, trimEnd: number) => Promise<{ success: boolean; outputPath?: string; error?: string }>;
       deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
       checkFileExists: (filePath: string) => Promise<{ exists: boolean }>;
+      generateThumbnail: (videoPath: string, clipId: string) => Promise<{ success: boolean; thumbnailPath?: string; error?: string }>;
       saveProject: (project: Project) => Promise<{ success: boolean; error?: string }>;
       loadProject: (filePath: string) => Promise<{ success: boolean; project?: Project; error?: string }>;
       showSaveDialog: (options: any) => Promise<{ canceled: boolean; filePath?: string }>;
       showOpenDialog: (options: any) => Promise<{ canceled: boolean; filePaths?: string[] }>;
+      getRecordingSources: () => Promise<{ success: boolean; sources?: any[]; error?: string }>;
+      startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }) => Promise<{ success: boolean; constraints?: any; isWebcam?: boolean; error?: string }>;
+      saveRecording: (arrayBuffer: ArrayBuffer) => Promise<{ success: boolean; filePath?: string; error?: string }>;
       onImportVideos: (callback: (filePaths: string[]) => void) => void;
       onTriggerExport: (callback: () => void) => void;
       onExportProgress: (callback: (progress: { progress: number; currentStep: string }) => void) => void;

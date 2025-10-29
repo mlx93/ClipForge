@@ -5,6 +5,7 @@ interface MediaLibraryState {
   clips: Clip[];
   reorderClips: (fromIndex: number, toIndex: number) => void;
   setClips: (clips: Clip[]) => void;
+  addClip: (clip: Clip) => void;
   removeClip: (clipId: string) => void;
 }
 
@@ -13,6 +14,12 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set) => ({
   
   setClips: (clips: Clip[]) => {
     set({ clips });
+  },
+  
+  addClip: (clip: Clip) => {
+    set((state) => ({
+      clips: [...state.clips, clip]
+    }));
   },
   
   reorderClips: (fromIndex: number, toIndex: number) => {

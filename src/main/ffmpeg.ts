@@ -17,7 +17,7 @@ export const exportTimeline = async (
   settings: ExportSettings,
   onProgress: (progress: ExportProgressUpdate) => void
 ): Promise<string> => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     if (clips.length === 0) {
       reject(new Error('No clips to export'));
       return;
@@ -27,6 +27,29 @@ export const exportTimeline = async (
     const outputDir = join(settings.outputPath, '..');
     if (!existsSync(outputDir)) {
       mkdir(outputDir, { recursive: true }).catch(reject);
+    }
+
+    // Check which clips have audio streams
+    const clipsWithAudio: boolean[] = [];
+    for (const clip of clips) {
+      try {
+        const metadata = await new Promise<any>((resolve, reject) => {
+          ffmpeg.ffprobe(clip.path, (err: any, data: any) => {
+            if (err) reject(err);
+            else resolve(data);
+          });
+        });
+        
+        const hasAudio = metadata.streams.some((stream: any) => stream.codec_type === 'audio');
+        clipsWithAudio.push(hasAudio);
+        
+        if (!hasAudio) {
+          console.log(`[FFmpeg Export] Clip ${clip.path} has no audio stream, will generate silent audio`);
+        }
+      } catch (error) {
+        console.warn(`[FFmpeg Export] Could not check audio for ${clip.path}, assuming no audio:`, error);
+        clipsWithAudio.push(false);
+      }
     }
 
     // Calculate total duration for progress tracking
@@ -39,13 +62,31 @@ export const exportTimeline = async (
     
     console.log('[FFmpeg Export] Total duration:', totalDuration, 'seconds');
 
+    // Detect output format early (needed for logging)
+    const outputFormat = settings.outputPath.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
+
     // Build FFmpeg command
     let command = ffmpeg();
+
+    // Track which input index corresponds to silent audio for each clip
+    const silentAudioInputIndices: Map<number, number> = new Map();
+    let nextInputIndex = clips.length; // Start after all video inputs
 
     // Add input files with trim points
     clips.forEach((clip, index) => {
       // Sanitize and quote file path to handle spaces and special characters
       const sanitizedPath = clip.path.replace(/\\/g, '/');
+      
+      // Detect input format for logging/debugging
+      const inputExt = clip.path.toLowerCase().split('.').pop() || '';
+      const isWebM = inputExt === 'webm';
+      
+      if (isWebM) {
+        console.log(`[FFmpeg Export] Detected WebM input: ${clip.path}, will be transcoded to ${outputFormat}`);
+      }
+      
+      // Build input options for trimming
+      const inputOptions: string[] = [];
       
       // Apply trim points if specified
       if (clip.trimStart > 0 || clip.trimEnd > 0) {
@@ -53,18 +94,35 @@ export const exportTimeline = async (
         const duration = clip.trimEnd > 0 ? clip.trimEnd - clip.trimStart : undefined;
         
         if (duration) {
-          command.input(sanitizedPath).inputOptions([`-ss ${startTime}`, `-t ${duration}`]);
+          inputOptions.push(`-ss ${startTime}`, `-t ${duration}`);
         } else {
-          command.input(sanitizedPath).inputOptions([`-ss ${startTime}`]);
+          inputOptions.push(`-ss ${startTime}`);
         }
+      }
+      
+      // Add input with options
+      if (inputOptions.length > 0) {
+        command.input(sanitizedPath).inputOptions(inputOptions);
       } else {
         command.input(sanitizedPath);
+      }
+      
+      // If clip has no audio, generate silent audio track
+      if (!clipsWithAudio[index]) {
+        const clipDuration = clip.trimEnd > 0 
+          ? clip.trimEnd - clip.trimStart 
+          : (clip.duration - clip.trimStart);
+        
+        // Generate silent audio using anullsrc filter
+        command.input('anullsrc=channel_layout=stereo:sample_rate=48000')
+          .inputOptions(['-f', 'lavfi', '-t', clipDuration.toString()]);
+        
+        silentAudioInputIndices.set(index, nextInputIndex);
+        nextInputIndex++;
       }
     });
 
     // Configure output
-    // Detect format based on output path extension
-    const outputFormat = settings.outputPath.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
     
     // Determine if we need scaling
     const needsScaling = settings.resolution.name !== 'Source' && 
@@ -77,12 +135,34 @@ export const exportTimeline = async (
 
     // Handle multiple clips by concatenating them
     if (clips.length > 1) {
-      // Create a filter complex for concatenation and optional scaling
-      const filterInputs = clips.map((_, index) => `[${index}:v][${index}:a]`).join('');
+      // Build filter inputs dynamically based on audio availability
+      // For each clip, we need [video][audio] pairs
+      // If a clip has no audio, we use the silent audio track we generated
+      const filterInputs: string[] = [];
+      
+      clips.forEach((clip, index) => {
+        filterInputs.push(`[${index}:v]`);
+        
+        if (clipsWithAudio[index]) {
+          // Use audio from the video file
+          filterInputs.push(`[${index}:a]`);
+        } else {
+          // Use silent audio we generated
+          const silentAudioIndex = silentAudioInputIndices.get(index);
+          if (silentAudioIndex !== undefined) {
+            filterInputs.push(`[${silentAudioIndex}:a]`);
+          } else {
+            // Fallback: shouldn't happen, but handle gracefully
+            console.warn(`[FFmpeg Export] No silent audio index found for clip ${index}, using video audio`);
+            filterInputs.push(`[${index}:a]`);
+          }
+        }
+      });
+      
       const filterConcat = `concat=n=${clips.length}:v=1:a=1[v][a]`;
       
       // Build the complete filter chain
-      let filterChain = `${filterInputs}${filterConcat}`;
+      let filterChain = `${filterInputs.join('')}${filterConcat}`;
       
       // If scaling is needed, add it to the filter chain
       if (scaleFilter) {
@@ -97,9 +177,58 @@ export const exportTimeline = async (
           '-map [a]'
         ]);
       }
-    } else if (scaleFilter) {
-      // Single clip with scaling - can use videoFilters
-      command = command.videoFilters([scaleFilter]);
+    } else {
+      // Single clip - handle audio separately
+      const hasAudio = clipsWithAudio[0];
+      
+      if (hasAudio) {
+        // Has audio - normal processing
+        if (scaleFilter) {
+          command = command.complexFilter([
+            `[0:v]${scaleFilter}[outv]`
+          ]).outputOptions([
+            '-map [outv]',
+            '-map 0:a'
+          ]);
+        } else {
+          command.outputOptions(['-map 0:v', '-map 0:a']);
+        }
+      } else {
+        // No audio - use silent audio we generated
+        const silentAudioIndex = silentAudioInputIndices.get(0);
+        if (silentAudioIndex !== undefined) {
+          if (scaleFilter) {
+            command = command.complexFilter([
+              `[0:v]${scaleFilter}[outv]`
+            ]).outputOptions([
+              '-map [outv]',
+              `-map ${silentAudioIndex}:a`
+            ]);
+          } else {
+            command.outputOptions([`-map 0:v`, `-map ${silentAudioIndex}:a`]);
+          }
+        } else {
+          // Fallback: generate silent audio on the fly
+          const clip = clips[0];
+          const clipDuration = clip.trimEnd > 0 
+            ? clip.trimEnd - clip.trimStart 
+            : (clip.duration - clip.trimStart);
+          
+          command.input('anullsrc=channel_layout=stereo:sample_rate=48000')
+            .inputOptions(['-f', 'lavfi', '-t', clipDuration.toString()]);
+          
+          if (scaleFilter) {
+            command = command.complexFilter([
+              `[0:v]${scaleFilter}[outv]`
+            ]).outputOptions([
+              '-map [outv]',
+              '-map 1:a'
+            ]);
+          } else {
+            command.outputOptions(['-map 0:v', '-map 1:a']);
+          }
+        }
+      }
     }
     
     command
@@ -116,7 +245,7 @@ export const exportTimeline = async (
       .output(settings.outputPath);
 
     // Progress tracking
-    command.on('progress', (progress) => {
+    command.on('progress', (progress: any) => {
       // FFmpeg doesn't always report percent correctly with complex filters
       // Calculate it manually from timemark and total duration
       let percent = 0;
@@ -145,7 +274,7 @@ export const exportTimeline = async (
     });
 
     // Start event
-    command.on('start', (commandLine) => {
+    command.on('start', (commandLine: any) => {
       console.log('[FFmpeg] Started export');
       onProgress({
         progress: 1,
@@ -154,7 +283,7 @@ export const exportTimeline = async (
     });
 
     // Error handling
-    command.on('error', (error) => {
+    command.on('error', (error: any) => {
       console.error('FFmpeg error:', error);
       
       // Check for disk full error (ENOSPC)
@@ -191,14 +320,14 @@ export const generateThumbnail = async (
       .size('160x90') // Thumbnail size
       .output(outputPath)
       .on('end', () => resolve())
-      .on('error', (error) => reject(error))
+      .on('error', (error: any) => reject(error))
       .run();
   });
 };
 
 export const getVideoDuration = async (videoPath: string): Promise<number> => {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+    ffmpeg.ffprobe(videoPath, (err: any, metadata: any) => {
       if (err) {
         reject(err);
         return;
@@ -216,15 +345,27 @@ export const trimVideo = async (
   trimStart: number,
   trimEnd: number,
   onProgress?: (progress: number) => void
-): Promise<void> => {
+): Promise<string> => {
   return new Promise((resolve, reject) => {
     const duration = trimEnd - trimStart;
     
     // Sanitize paths to handle spaces and special characters
     const sanitizedInputPath = inputPath.replace(/\\/g, '/');
-    const sanitizedOutputPath = outputPath.replace(/\\/g, '/');
     
-    ffmpeg(sanitizedInputPath)
+    // Detect input format and handle WebM conversion
+    const inputExt = inputPath.toLowerCase().split('.').pop() || '';
+    const outputExt = outputPath.toLowerCase().split('.').pop() || '';
+    const isWebM = inputExt === 'webm';
+    
+    // If input is WebM, convert to MP4 (more compatible with our codecs)
+    let finalOutputPath = outputPath.replace(/\\/g, '/');
+    if (isWebM && outputExt === 'webm') {
+      // Change extension to .mp4
+      finalOutputPath = outputPath.replace(/\.webm$/i, '.mp4');
+      console.log('[FFmpeg Trim] Converting WebM to MP4:', { inputPath, originalOutput: outputPath, finalOutput: finalOutputPath });
+    }
+    
+    const command = ffmpeg(sanitizedInputPath)
       .seekInput(trimStart)
       .duration(duration)
       .outputOptions([
@@ -234,15 +375,22 @@ export const trimVideo = async (
         '-crf 23',
         '-movflags +faststart',
         '-pix_fmt yuv420p'
-      ])
-      .output(sanitizedOutputPath)
-      .on('progress', (progress) => {
+      ]);
+    
+    // Explicitly set format to mp4 if converting from WebM
+    if (isWebM && outputExt === 'webm') {
+      command.format('mp4');
+    }
+    
+    command
+      .output(finalOutputPath)
+      .on('progress', (progress: any) => {
         if (onProgress) {
           const percent = Math.round(progress.percent || 0);
           onProgress(percent);
         }
       })
-      .on('error', (error) => {
+      .on('error', (error: any) => {
         console.error('FFmpeg trim error:', error);
         
         // Check for disk full error (ENOSPC)
@@ -253,7 +401,7 @@ export const trimVideo = async (
         }
       })
       .on('end', () => {
-        resolve();
+        resolve(finalOutputPath);
       })
       .run();
   });

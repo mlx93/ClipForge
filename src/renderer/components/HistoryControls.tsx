@@ -14,32 +14,45 @@ const HistoryControls: React.FC = () => {
     pushSnapshot
   } = useHistoryStore();
 
-  const timelineStore = useTimelineStore();
-  const mediaLibraryStore = useMediaLibraryStore();
+  const timelineState = useTimelineStore();
+  const mediaLibraryState = useMediaLibraryStore();
 
   const handleUndo = () => {
+    // Get the current present snapshot (the operation we're about to undo)
+    const currentPresent = useHistoryStore.getState().present;
+    const operationDescription = currentPresent?.description || 'last operation';
+    
     const snapshot = undo();
     if (snapshot) {
-      applySnapshotToStores(snapshot, timelineStore, mediaLibraryStore);
-      toast.success(`Undid: ${snapshot.description}`);
+      applySnapshotToStores(snapshot, useTimelineStore, useMediaLibraryStore);
+      toast.success(`Undid: ${operationDescription}`);
     }
   };
 
   const handleRedo = () => {
+    // Get the future snapshot (the operation we're about to redo)
+    const futureSnapshots = useHistoryStore.getState().future;
+    const operationDescription = futureSnapshots[0]?.description || 'last operation';
+    
     const snapshot = redo();
     if (snapshot) {
-      applySnapshotToStores(snapshot, timelineStore, mediaLibraryStore);
-      toast.success(`Redid: ${snapshot.description}`);
+      applySnapshotToStores(snapshot, useTimelineStore, useMediaLibraryStore);
+      toast.success(`Redid: ${operationDescription}`);
     }
   };
 
   // Helper function to create and push a snapshot
   const createSnapshot = (description: string) => {
+    // Get fresh state directly from stores, not from React hooks
+    const freshTimelineState = useTimelineStore.getState();
+    const freshMediaLibraryState = useMediaLibraryStore.getState();
+    
     const snapshot = createSnapshotFromStores(
-      timelineStore.getState(),
-      mediaLibraryStore.getState(),
+      freshTimelineState,
+      freshMediaLibraryState,
       description
     );
+    
     pushSnapshot(snapshot);
   };
 
@@ -47,7 +60,8 @@ const HistoryControls: React.FC = () => {
   React.useEffect(() => {
     // Make createSnapshot available globally for other components to use
     (window as any).createHistorySnapshot = createSnapshot;
-  }, [timelineStore, mediaLibraryStore]);
+  }, [timelineState, mediaLibraryState]);
+
 
   return (
     <div className="flex items-center space-x-2">

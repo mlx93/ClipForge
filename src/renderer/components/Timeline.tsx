@@ -126,7 +126,20 @@ const Timeline: React.FC = () => {
     // Check if playhead is within this clip
     if (playhead >= clipStartTime && playhead <= clipEndTime) {
       const splitTime = playhead - clipStartTime;
+      
+      // Execute the split operation first
       useTimelineStore.getState().splitClip(clip.id, splitTime);
+      
+      // Create history snapshot AFTER splitting (captures state after operation)
+      if (typeof (window as any).createHistorySnapshot === 'function') {
+        try {
+          (window as any).createHistorySnapshot(`Split clip at ${formatPlayheadTime(playhead)}`);
+        } catch (error) {
+          console.warn('Failed to create history snapshot:', error);
+        }
+      }
+      
+      toast.success(`Split clip at ${formatPlayheadTime(playhead)}`);
     }
   };
 
@@ -246,6 +259,19 @@ const Timeline: React.FC = () => {
           useTimelineStore.getState().setPlayhead(newTotalDuration);
         }
         
+        // Create history snapshot AFTER trimming (captures state after operation)
+        // State is already updated synchronously by Zustand, so we can capture immediately
+        if (typeof (window as any).createHistorySnapshot === 'function') {
+          try {
+            (window as any).createHistorySnapshot(`Trim "${clip.name}" to ${formatPlayheadTime(trimStart)}-${formatPlayheadTime(trimEnd)}`);
+            console.log('[Trim] History snapshot created successfully');
+          } catch (error) {
+            console.error('[Trim] Failed to create history snapshot:', error);
+          }
+        } else {
+          console.warn('[Trim] createHistorySnapshot function not available');
+        }
+        
         setTempTrimStart(null);
         setTempTrimEnd(null);
         setIsTrimming(false);
@@ -289,7 +315,19 @@ const Timeline: React.FC = () => {
     if (!selectedClipId) return;
     const currentIndex = clips.findIndex(c => c.id === selectedClipId);
     if (currentIndex > 0) {
+      // Execute the move operation first
       useTimelineStore.getState().reorderClips(currentIndex, currentIndex - 1);
+      
+      // Create history snapshot AFTER moving (captures state after operation)
+      if (typeof (window as any).createHistorySnapshot === 'function') {
+        try {
+          (window as any).createHistorySnapshot(`Move clip left`);
+        } catch (error) {
+          console.warn('Failed to create history snapshot:', error);
+        }
+      }
+      
+      toast.success('Moved clip left');
     }
   };
 
@@ -297,7 +335,19 @@ const Timeline: React.FC = () => {
     if (!selectedClipId) return;
     const currentIndex = clips.findIndex(c => c.id === selectedClipId);
     if (currentIndex < clips.length - 1) {
+      // Execute the move operation first
       useTimelineStore.getState().reorderClips(currentIndex, currentIndex + 1);
+      
+      // Create history snapshot AFTER moving (captures state after operation)
+      if (typeof (window as any).createHistorySnapshot === 'function') {
+        try {
+          (window as any).createHistorySnapshot(`Move clip right`);
+        } catch (error) {
+          console.warn('Failed to create history snapshot:', error);
+        }
+      }
+      
+      toast.success('Moved clip right');
     }
   };
 
@@ -380,7 +430,18 @@ const Timeline: React.FC = () => {
         // Remove clip from timeline
         const clip = clips.find(c => c.id === selectedClipId);
         if (clip) {
+          // Execute the remove operation first
           useTimelineStore.getState().removeClip(selectedClipId);
+          
+          // Create history snapshot AFTER removing (captures state after operation)
+          if (typeof (window as any).createHistorySnapshot === 'function') {
+            try {
+              (window as any).createHistorySnapshot(`Remove "${clip.name}" from timeline`);
+            } catch (error) {
+              console.warn('Failed to create history snapshot:', error);
+            }
+          }
+          
           console.log('Removed clip from timeline:', clip.name);
           toast.success(`Removed "${clip.name}" from timeline`);
         }

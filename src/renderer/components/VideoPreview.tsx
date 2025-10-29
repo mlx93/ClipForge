@@ -17,6 +17,7 @@ const VideoPreview: React.FC = () => {
   const playbackAnimationFrameRef = useRef<number | null>(null);
   const previousClipIdRef = useRef<string | null>(null); // Track previous clip to prevent duplicate loads
   const handleEndedRef = useRef<(() => void) | null>(null); // Stable ref for handleEnded to avoid RAF loop restarts
+  const previousVideoTimeRef = useRef<number>(0); // Track previous video time for boundary crossing detection
   
   // Only subscribe to the state we actually need
   const { clips, playhead, totalDuration } = useTimelineStore();
@@ -394,33 +395,41 @@ const VideoPreview: React.FC = () => {
         // Use a small tolerance (0.1s) to catch boundary crossings
         const BOUNDARY_TOLERANCE = 0.1;
         
-        // Check if we've crossed outside the valid trim region
-        if (video.currentTime < effectiveTrimStart - BOUNDARY_TOLERANCE) {
-          // Playing before trim start - pause at trim start
-          console.log('[Trim Boundary] Before trim start:', {
-            currentTime: video.currentTime,
-            trimStart: effectiveTrimStart,
-            source: sourceDescription
-          });
-          video.pause();
-          video.currentTime = effectiveTrimStart;
-          setIsPlaying(false);
-          playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
-          return;
-        } else if (video.currentTime >= effectiveTrimEnd - BOUNDARY_TOLERANCE) {
-          // Playing past trim end - pause at trim end
-          console.log('[Trim Boundary] Reached trim end:', {
-            currentTime: video.currentTime,
-            trimEnd: effectiveTrimEnd,
-            difference: video.currentTime - effectiveTrimEnd,
-            source: sourceDescription
-          });
-          video.pause();
-          video.currentTime = effectiveTrimEnd;
-          setIsPlaying(false);
-          playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
-          return;
+        // Track previous video time to detect boundary crossings
+        const previousTime = previousVideoTimeRef.current;
+        const currentTime = video.currentTime;
+        
+        // Check for boundary crossings while video is actively playing
+        // Hybrid approach: No pause at trim start, pause at trim end
+        if (!video.paused) {
+          // TRIM END: Only pause when crossing INTO trim end from before it
+          // This allows playback from after trim end without interference
+          const wasBeforeTrimEnd = previousTime < effectiveTrimEnd - BOUNDARY_TOLERANCE;
+          const isAtTrimEnd = currentTime >= effectiveTrimEnd - BOUNDARY_TOLERANCE && 
+                              currentTime < effectiveTrimEnd + BOUNDARY_TOLERANCE;
+          
+          if (wasBeforeTrimEnd && isAtTrimEnd) {
+            // Video has crossed into trim end while playing - auto-pause (resumable)
+            console.log('[Trim Boundary] Crossed into trim end - auto-pausing (resumable):', {
+              currentTime,
+              previousTime,
+              trimEnd: effectiveTrimEnd,
+              source: sourceDescription,
+              videoHasMoved: Math.abs(currentTime - previousTime) > 0.01
+            });
+            video.pause();
+            video.currentTime = effectiveTrimEnd;
+            setIsPlaying(false);
+            playbackAnimationFrameRef.current = requestAnimationFrame(syncPlayhead);
+            return;
+          }
+          
+          // TRIM START: No auto-pause - videos can play through trim start
+          // This allows videos to start playing from trim start position without immediate pause
         }
+        
+        // Update previous time for next frame
+        previousVideoTimeRef.current = currentTime;
       }
       
       // Check if we've reached the end of the current clip

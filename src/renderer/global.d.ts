@@ -41,7 +41,8 @@ declare global {
 
       // Recording operations
       getRecordingSources: () => Promise<{ success: boolean; sources?: any[]; error?: string }>;
-      startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }) => Promise<{ success: boolean; constraints?: any; error?: string }>;
+      startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }) => Promise<{ success: boolean; constraints?: any; isWebcam?: boolean; error?: string }>;
+      saveRecording: (arrayBuffer: ArrayBuffer) => Promise<{ success: boolean; filePath?: string; error?: string }>;
 
       // Listen for events from main process
       onImportVideos: (callback: (filePaths: string[]) => void) => void;

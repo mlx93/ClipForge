@@ -12,8 +12,8 @@ export interface HistoryState {
   
   // Actions
   pushSnapshot: (snapshot: HistorySnapshot) => void;
-  undo: () => void;
-  redo: () => void;
+  undo: () => HistorySnapshot | undefined;
+  redo: () => HistorySnapshot | undefined;
   canUndo: () => boolean;
   canRedo: () => boolean;
   clearHistory: () => void;
@@ -74,16 +74,19 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     
     if (past.length === 0) return;
     
-    const previousSnapshot = past[past.length - 1];
+    // The current present is the state AFTER the most recent operation
+    // To undo, we need to restore the state that existed after the previous operation
+    // This is the most recent item in the past array (LIFO - Last In First Out)
+    const snapshotToRestore = past[past.length - 1];
     const newPast = past.slice(0, -1);
     
     set({
       past: newPast,
-      present: previousSnapshot,
+      present: snapshotToRestore,
       future: present ? [present, ...future] : future
     });
     
-    return previousSnapshot;
+    return snapshotToRestore;
   },
 
   redo: () => {

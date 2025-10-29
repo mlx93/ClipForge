@@ -13,7 +13,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
   const {
     isRecording,
     isPaused,
-    recordingTime,
     availableSources,
     settings,
     recordingBlob,
@@ -28,6 +27,9 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
     getFormattedTime,
     isReadyToRecord
   } = useRecordingStore();
+  
+  // Explicitly subscribe to recordingTime changes to ensure timer updates
+  const recordingTime = useRecordingStore((state) => state.recordingTime);
 
   const { addClips } = useTimelineStore();
   const { addClip } = useMediaLibraryStore();
@@ -36,8 +38,14 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [chunks, setChunks] = useState<Blob[]>([]);
+  const [cameraReady, setCameraReady] = useState(false); // Track if camera exposure is ready
+  const [streamReady, setStreamReady] = useState(false); // Track if stream is ready for preview
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStartTimeRef = useRef<number | null>(null);
+  const chunksRef = useRef<Blob[]>([]); // Track chunks in ref to avoid closure issues
 
   // Load available sources when panel opens
   useEffect(() => {
@@ -45,6 +53,21 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       loadRecordingSources();
     }
   }, [isOpen, availableSources.length]);
+
+      // Cleanup recording state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset all recording state when modal closes
+      console.log('[Recording] Modal closed, cleaning up recording state');
+      setStreamReady(false);
+      setCameraReady(false);
+      // Reset recording blob and chunks when modal closes
+      setRecordingBlob(null);
+      setChunks([]);
+      chunksRef.current = [];
+      resetRecording();
+    }
+  }, [isOpen, setRecordingBlob]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -57,6 +80,94 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       }
     };
   }, [stream]);
+
+  // Attach stream to preview video element
+  useEffect(() => {
+    if (stream && previewVideoRef.current) {
+      const video = previewVideoRef.current;
+      console.log('[Recording] Setting preview video srcObject, stream tracks:', stream.getTracks().map(track => ({
+        kind: track.kind,
+        label: track.label,
+        enabled: track.enabled
+      })));
+      
+      // Set stream source
+      video.srcObject = stream;
+      
+      // For camera, show spinner initially - preview will be shown when recording starts
+      if (settings.videoSource?.type === 'webcam') {
+        setStreamReady(false); // Show spinner initially
+        // Don't set streamReady here - it will be set when MediaRecorder starts
+        // But ensure video is set up to play when ready
+        video.muted = true; // Mute preview to avoid feedback
+        video.autoplay = true;
+        video.playsInline = true;
+      } else {
+        // Screen recording shows immediately - no loading state needed
+        setStreamReady(true);
+        // Ensure video plays for screen recording
+        video.play().catch(err => {
+          console.error('[Recording] Error playing screen preview:', err);
+        });
+      }
+      
+      // Log video track details to verify source
+      const videoTracks = stream.getVideoTracks();
+      if (videoTracks.length > 0) {
+        const track = videoTracks[0];
+        console.log('[Recording] Preview video track label:', track.label);
+        console.log('[Recording] Preview video track settings:', track.getSettings());
+      }
+      
+      // Log audio tracks
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        console.log('[Recording] Preview audio tracks:', audioTracks.length);
+        audioTracks.forEach(track => {
+          console.log('[Recording] Audio track:', {
+            label: track.label,
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState
+          });
+        });
+      } else {
+        console.warn('[Recording] No audio tracks found in stream!');
+      }
+    } else if (!stream && previewVideoRef.current) {
+      previewVideoRef.current.srcObject = null;
+      setStreamReady(false);
+    }
+  }, [stream, settings.videoSource]);
+
+  // Create blob when recording stops and chunks are available
+  useEffect(() => {
+    console.log('[Recording] Blob creation effect triggered:', {
+      isRecording,
+      chunksLength: chunks.length,
+      hasRecordingBlob: !!recordingBlob,
+      totalChunkSize: chunks.reduce((sum, c) => sum + c.size, 0)
+    });
+    
+    if (!isRecording && chunks.length > 0 && !recordingBlob) {
+      const totalSize = chunks.reduce((acc, chunk) => acc + chunk.size, 0);
+      console.log('[Recording] Creating blob from', chunks.length, 'chunks, total size:', totalSize, 'bytes');
+      
+      // Only create blob if we have actual data (non-zero size chunks)
+      // WebM files need at least a few KB to be valid
+      if (totalSize > 1024) { // Require at least 1KB
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        console.log('[Recording] Blob created, size:', blob.size, 'bytes');
+        setRecordingBlob(blob);
+      } else {
+        console.warn('[Recording] Chunks too small or empty, cannot create valid blob. Total size:', totalSize, 'bytes');
+      }
+    } else if (!isRecording && chunks.length === 0) {
+      console.log('[Recording] No chunks available to create blob');
+    } else if (!isRecording && recordingBlob) {
+      console.log('[Recording] Blob already exists');
+    }
+  }, [isRecording, chunks, recordingBlob, setRecordingBlob]);
 
   const loadRecordingSources = async () => {
     try {
@@ -98,36 +209,464 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       }
 
       // Get user media with the constraints
-      const mediaStream = await navigator.mediaDevices.getUserMedia(result.constraints);
-      setStream(mediaStream);
+      console.log('[Recording] Constraints from main process:', JSON.stringify(result.constraints, null, 2));
+      console.log('[Recording] Selected video source:', settings.videoSource);
+      console.log('[Recording] Video source ID:', settings.videoSource?.id);
+      console.log('[Recording] Is webcam:', result.isWebcam);
+      
+      let mediaStream: MediaStream;
+      
+      if (result.isWebcam) {
+        // For webcam, use standard getUserMedia
+        console.log('[Recording] Requesting webcam stream...');
+        mediaStream = await navigator.mediaDevices.getUserMedia(result.constraints);
+      } else {
+        // For screen/window recording in Electron
+        // Electron requires getUserMedia with chromeMediaSource, but it might not work directly
+        // Try using the constraints - if it fails, we'll get an error
+        console.log('[Recording] Requesting screen capture stream with getUserMedia...');
+        console.log('[Recording] Using constraints:', JSON.stringify(result.constraints, null, 2));
+        console.log('[Recording] Expected source ID:', settings.videoSource?.id);
+        
+        try {
+          // Electron's getUserMedia should support chromeMediaSource constraints
+          // But if it doesn't work, we might need to check Electron version or permissions
+          mediaStream = await navigator.mediaDevices.getUserMedia(result.constraints);
+          
+          // Verify we got the right source
+          const videoTracks = mediaStream.getVideoTracks();
+          if (videoTracks.length > 0) {
+            const track = videoTracks[0];
+            const trackSettings = track.getSettings();
+            console.log('[Recording] Video track settings:', trackSettings);
+            console.log('[Recording] Video track label:', track.label);
+            
+            // Check if label indicates screen vs camera
+            const label = track.label.toLowerCase();
+            if (label.includes('camera') || label.includes('webcam') || label.includes('facetime')) {
+              console.error('[Recording] ERROR: Got camera track instead of screen!');
+              console.error('[Recording] Track label:', track.label);
+              console.error('[Recording] Electron may not support chromeMediaSource constraints in getUserMedia');
+              
+              // Stop the incorrectly created camera stream immediately
+              console.log('[Recording] Stopping incorrect camera stream...');
+              mediaStream.getTracks().forEach(track => track.stop());
+              mediaStream = null as any; // Clear reference
+              
+              console.error('[Recording] Trying alternative: getDisplayMedia...');
+              
+              // Try getDisplayMedia as fallback
+              try {
+                const displayStream = await navigator.mediaDevices.getDisplayMedia({
+                  video: true,
+                  audio: settings.audioSource
+                });
+                
+                // Verify display stream
+                const displayTracks = displayStream.getVideoTracks();
+                if (displayTracks.length > 0) {
+                  const displayLabel = displayTracks[0].label.toLowerCase();
+                  if (!displayLabel.includes('camera') && !displayLabel.includes('webcam')) {
+                    console.log('[Recording] getDisplayMedia succeeded with screen capture');
+                    mediaStream = displayStream;
+                  } else {
+                    displayStream.getTracks().forEach(track => track.stop());
+                    throw new Error('getDisplayMedia also returned camera');
+                  }
+                } else {
+                  throw new Error('getDisplayMedia returned no video tracks');
+                }
+              } catch (displayError) {
+                console.error('[Recording] getDisplayMedia also failed:', displayError);
+                console.error('[Recording] DisplayMedia error details:', displayError);
+                
+                // Provide helpful error message
+                const errorMessage = displayError instanceof Error 
+                  ? displayError.message 
+                  : String(displayError);
+                
+                if (errorMessage.includes('Not supported')) {
+                  throw new Error(
+                    'Screen recording is not supported in this Electron version. ' +
+                    'Please ensure Screen Recording permission is granted in System Preferences > Privacy & Security > Screen Recording. ' +
+                    'Also verify that Electron has the necessary permissions.'
+                  );
+                } else {
+                  throw new Error(
+                    `Failed to capture screen - Electron fell back to camera. ` +
+                    `Track label: ${track.label}. ` +
+                    `Error: ${errorMessage}. ` +
+                    `This may be an Electron permissions or configuration issue. ` +
+                    `Please check System Preferences > Privacy & Security > Screen Recording.`
+                  );
+                }
+              }
+            } else {
+              console.log('[Recording] Screen capture confirmed - track label:', track.label);
+            }
+          }
+        } catch (error) {
+          console.error('[Recording] Error getting screen capture stream:', error);
+          throw error; // Re-throw to show error to user
+        }
+      }
+      
+      console.log('[Recording] MediaStream created:', mediaStream);
+      console.log('[Recording] MediaStream active:', mediaStream.active);
+      console.log('[Recording] MediaStream id:', mediaStream.id);
+      console.log('[Recording] MediaStream video tracks:', mediaStream.getVideoTracks().map(track => ({
+        kind: track.kind,
+        label: track.label,
+        enabled: track.enabled,
+        readyState: track.readyState,
+        settings: track.getSettings()
+      })));
+      
+      // For camera, wait a moment before marking stream as ready to show spinner
+      if (result.isWebcam) {
+        // Set stream but don't mark as ready - video element will handle it
+        setStream(mediaStream);
+      } else {
+        setStream(mediaStream);
+        setStreamReady(true); // Screen recording shows immediately
+      }
+
+      // Reset chunks before starting new recording
+      setChunks([]);
+      chunksRef.current = []; // Reset ref as well
+      
+      // Reset previous recording state if starting new recording
+      if (recordingBlob) {
+        resetRecording();
+        setStreamReady(false);
+        setCameraReady(false);
+      }
 
       // Create MediaRecorder
+      console.log('[Recording] Creating MediaRecorder with stream:', mediaStream);
+      console.log('[Recording] Stream tracks:', mediaStream.getTracks().map(track => ({
+        kind: track.kind,
+        enabled: track.enabled,
+        readyState: track.readyState,
+        id: track.id,
+        label: track.label,
+        muted: track.muted
+      })));
+      
+      // Check if we have video tracks
+      const videoTracks = mediaStream.getVideoTracks();
+      const audioTracks = mediaStream.getAudioTracks();
+      console.log('[Recording] Video tracks count:', videoTracks.length);
+      console.log('[Recording] Audio tracks count:', audioTracks.length);
+      
+      if (videoTracks.length === 0) {
+        console.error('[Recording] No video tracks found in stream!');
+      } else {
+        const videoTrack = videoTracks[0];
+        console.log('[Recording] Video track details:', videoTrack.getSettings());
+        console.log('[Recording] Video track constraints:', videoTrack.getConstraints());
+        console.log('[Recording] Video track capabilities:', videoTrack.getCapabilities());
+        
+        // Check if the video track is actually producing frames
+        videoTrack.addEventListener('ended', () => {
+          console.log('[Recording] Video track ended!');
+        });
+        
+        videoTrack.addEventListener('mute', () => {
+          console.log('[Recording] Video track muted!');
+        });
+        
+        videoTrack.addEventListener('unmute', () => {
+          console.log('[Recording] Video track unmuted!');
+        });
+      }
+      
+      // Check audio tracks
+      if (audioTracks.length === 0) {
+        console.warn('[Recording] No audio tracks found in stream! Audio may not be recorded.');
+        if (settings.audioSource && !result.isWebcam) {
+          console.warn('[Recording] Screen recording requested audio but no audio tracks available.');
+          console.warn('[Recording] This may be an Electron permissions issue - system audio capture requires additional permissions.');
+        }
+      } else {
+        console.log('[Recording] Audio tracks found:', audioTracks.length);
+        audioTracks.forEach((track, index) => {
+          console.log(`[Recording] Audio track ${index}:`, {
+            label: track.label,
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState,
+            settings: track.getSettings()
+          });
+          
+          // Ensure audio track is enabled
+          if (!track.enabled) {
+            console.warn(`[Recording] Audio track ${index} is disabled, enabling...`);
+            track.enabled = true;
+          }
+          
+          // Monitor audio track events
+          track.addEventListener('ended', () => {
+            console.error(`[Recording] Audio track ${index} ended unexpectedly!`);
+          });
+          
+          track.addEventListener('mute', () => {
+            console.error(`[Recording] Audio track ${index} became muted!`);
+          });
+        });
+      }
+      
+      // Try different MIME types in order of preference
+      // Ensure audio codec is included (opus) for recordings with audio
+      const hasAudio = audioTracks.length > 0;
+      let mimeType = hasAudio ? 'video/webm;codecs=vp9,opus' : 'video/webm;codecs=vp9';
+      
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = hasAudio ? 'video/webm;codecs=vp8,opus' : 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/mp4';
+          }
+        }
+      }
+      
+      console.log('[Recording] Using MIME type:', mimeType, 'Has audio:', hasAudio);
+      
       const recorder = new MediaRecorder(mediaStream, {
-        mimeType: 'video/webm;codecs=vp9'
+        mimeType: mimeType,
+        videoBitsPerSecond: 2500000, // 2.5 Mbps
+        audioBitsPerSecond: 128000   // 128 kbps
       });
-
-      const recordedChunks: Blob[] = [];
+      
+      // For screen recording, we might need to start with a longer interval
+      // or use different settings
+      console.log('[Recording] MediaRecorder options:', {
+        mimeType: mimeType,
+        videoBitsPerSecond: 2500000,
+        audioBitsPerSecond: 128000
+      });
+      
+      console.log('[Recording] MediaRecorder created, state:', recorder.state);
       
       recorder.ondataavailable = (event) => {
+        console.log('[Recording] ondataavailable event fired, data size:', event.data.size);
+        console.log('[Recording] Event details:', {
+          type: event.type,
+          timecode: event.timecode,
+          dataType: event.data.type,
+          dataSize: event.data.size
+        });
+        
+        // Always add chunks, even if size is 0 (could be metadata)
+        // But prioritize non-empty chunks
         if (event.data.size > 0) {
-          recordedChunks.push(event.data);
+          console.log('[Recording] Data chunk received:', event.data.size, 'bytes');
+          chunksRef.current.push(event.data); // Update ref immediately
+          setChunks(prev => {
+            const newChunks = [...prev, event.data];
+            console.log('[Recording] Total chunks now:', newChunks.length, 'Total size:', newChunks.reduce((sum, c) => sum + c.size, 0), 'bytes');
+            return newChunks;
+          });
+        } else {
+          console.log('[Recording] Empty data chunk received (may be metadata or end-of-stream)');
+          // Still add empty chunks if they're the last ones (end-of-stream marker)
+          if (recorder.state === 'inactive') {
+            chunksRef.current.push(event.data);
+            setChunks(prev => {
+              console.log('[Recording] Adding final empty chunk');
+              return [...prev, event.data];
+            });
+          }
         }
       };
 
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        setRecordingBlob(blob);
-        setChunks(recordedChunks);
+      recorder.onstop = async () => {
+        console.log('[Recording] MediaRecorder stopped, state:', recorder.state);
+        // Wait longer for final chunks to be fully collected
+        // WebM files need time to finalize properly
+        setTimeout(async () => {
+          const finalChunks = [...chunksRef.current];
+          const totalSize = finalChunks.reduce((sum, c) => sum + c.size, 0);
+          console.log('[Recording] onstop - Final chunks:', finalChunks.length, 'Total size:', totalSize, 'bytes');
+          
+          // Recreate blob from all chunks including final ones
+          if (totalSize > 1024) {
+            const finalBlob = new Blob(finalChunks, { type: 'video/webm' });
+            console.log('[Recording] onstop - Recreating blob, size:', finalBlob.size, 'bytes');
+            
+            // Verify blob is valid by checking size
+            if (finalBlob.size > 0) {
+              // Update chunks state to trigger blob recreation
+              setChunks(finalChunks);
+              console.log('[Recording] Blob recreated successfully');
+            } else {
+              console.error('[Recording] Blob recreation failed - size is 0');
+            }
+          } else {
+            console.warn('[Recording] Total chunk size too small:', totalSize, 'bytes');
+          }
+        }, 500); // Increased delay to ensure WebM file is finalized
       };
 
-      recorder.start(1000); // Collect data every second
-      setMediaRecorder(recorder);
-      setRecording(true);
+      recorder.onerror = (event) => {
+        console.error('[Recording] MediaRecorder error:', event);
+        console.error('[Recording] MediaRecorder error details:', {
+          error: event.error,
+          type: event.type,
+          target: event.target
+        });
+      };
 
-      // Start recording timer
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+      recorder.onstart = () => {
+        console.log('[Recording] MediaRecorder started, state:', recorder.state);
+      };
+
+      setMediaRecorder(recorder);
+      mediaRecorderRef.current = recorder; // Store in ref for timer access
+      
+      // Reset recording time to 0 BEFORE starting
+      setRecordingTime(0);
+      setRecording(true);
+      
+      // For webcam, wait 600ms for camera exposure adjustment, then start recording + show preview together
+      const cameraDelay = result.isWebcam ? 600 : 0; // 0.6 seconds for camera exposure
+      
+      if (result.isWebcam) {
+        console.log('[Recording] Webcam recording - showing spinner for', cameraDelay, 'ms while camera adjusts');
+        setCameraReady(false); // Hide preview initially
+        setStreamReady(false); // Show spinner
+      } else {
+        setCameraReady(true); // Screen recording shows immediately
+        setStreamReady(true);
+      }
+      
+      // Start recording and show preview together after delay
+      setTimeout(() => {
+        // Set recording start time NOW when MediaRecorder actually starts
+        recordingStartTimeRef.current = Date.now();
+        
+        // Start recording timer - sync with MediaRecorder start
+        console.log('[Recording] Starting timer interval');
+        const timerCallback = () => {
+          try {
+            // Get fresh state from store to avoid closure issues
+            const currentState = useRecordingStore.getState();
+            const startTime = recordingStartTimeRef.current;
+            
+            // Only increment if we're actually recording and not paused (using fresh state)
+            if (currentState.isRecording && !currentState.isPaused && startTime) {
+              // Calculate elapsed time from start for accuracy
+              const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+              
+              console.log('[Recording] Timer tick - updating to', elapsedSeconds, 'seconds');
+              
+              // Always update, even if same value, to force re-render
+              setRecordingTime(elapsedSeconds);
+            }
+          } catch (error) {
+            console.error('[Recording] Timer callback error:', error);
+          }
+        };
+        
+        recordingIntervalRef.current = setInterval(timerCallback, 100); // Update every 100ms for smoother display
+        
+        // Verify stream is producing frames before starting recorder
+        const videoTracks = mediaStream.getVideoTracks();
+        if (videoTracks.length > 0) {
+          const videoTrack = videoTracks[0];
+          console.log('[Recording] Video track readyState before start:', videoTrack.readyState);
+          console.log('[Recording] Video track enabled:', videoTrack.enabled);
+          console.log('[Recording] Video track muted:', videoTrack.muted);
+          
+          // Check if track is actually producing frames
+          videoTrack.addEventListener('mute', () => {
+            console.error('[Recording] Video track became muted!');
+          });
+          
+          videoTrack.addEventListener('ended', () => {
+            console.error('[Recording] Video track ended unexpectedly!');
+          });
+        }
+        
+        // For screen recording, ensure video element is playing before starting recorder
+        if (!result.isWebcam && previewVideoRef.current) {
+          const video = previewVideoRef.current;
+          // Ensure video is playing to produce frames
+          video.play().catch(err => {
+            console.error('[Recording] Error playing video:', err);
+          });
+          
+          // Wait a moment for video to start playing, then start recorder
+          setTimeout(() => {
+            startRecorder();
+          }, 200);
+        } else {
+          startRecorder();
+        }
+        
+        function startRecorder() {
+          // Use timeslice for both camera and screen
+          // For screen recording, use a shorter timeslice to ensure chunks are produced
+          const timeslice = result.isWebcam ? 1000 : 500; // Camera: 1s, Screen: 500ms
+          console.log('[Recording] Starting MediaRecorder with timeslice:', timeslice);
+          recorder.start(timeslice);
+          
+          console.log('[Recording] MediaRecorder started, state:', recorder.state);
+          
+          // For camera, NOW show preview and mark camera as ready (synced with recording start)
+          if (result.isWebcam) {
+            console.log('[Recording] Camera exposure ready, showing preview and starting recording');
+            setStreamReady(true); // Show preview NOW
+            
+            // Ensure video element is playing to show preview - use setTimeout to ensure DOM is updated
+            setTimeout(() => {
+              if (previewVideoRef.current && previewVideoRef.current.srcObject === mediaStream) {
+                previewVideoRef.current.play().then(() => {
+                  console.log('[Recording] Video preview playing successfully');
+                }).catch(err => {
+                  console.error('[Recording] Error playing video preview:', err);
+                });
+              }
+            }, 50);
+            
+            setCameraReady(true); // Camera is ready NOW
+          }
+          
+          // Test if MediaRecorder is actually working
+          setTimeout(() => {
+            const recorderState = mediaRecorderRef.current?.state;
+            console.log('[Recording] MediaRecorder state after 1s:', recorderState);
+            console.log('[Recording] MediaStream active after 1s:', mediaStream.active);
+            const tracks = mediaStream.getVideoTracks();
+            const audioTracks = mediaStream.getAudioTracks();
+            console.log('[Recording] Audio tracks after 1s:', audioTracks.length);
+            if (audioTracks.length > 0) {
+              console.log('[Recording] Audio track details:', audioTracks.map(track => ({
+                enabled: track.enabled,
+                muted: track.muted,
+                readyState: track.readyState,
+                label: track.label,
+                settings: track.getSettings()
+              })));
+            }
+            if (tracks.length > 0) {
+              console.log('[Recording] Video tracks after 1s:', tracks.map(track => ({
+                enabled: track.enabled,
+                muted: track.muted,
+                readyState: track.readyState,
+                label: track.label,
+                settings: track.getSettings()
+              })));
+            }
+            if (recorderState === 'recording') {
+              console.log('[Recording] MediaRecorder is still recording');
+            } else {
+              console.log('[Recording] MediaRecorder stopped unexpectedly');
+            }
+          }, 1000);
+        }
+      }, cameraDelay);
 
       toast.success('Recording started');
     } catch (error) {
@@ -139,86 +678,180 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
   };
 
   const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      mediaRecorder.stop();
+    console.log('[Recording] Stopping recording...');
+    
+    // Stop MediaRecorder FIRST to ensure all chunks are collected
+    const recorder = mediaRecorderRef.current;
+    if (recorder && (recorder.state === 'recording' || recorder.state === 'paused')) {
+      console.log('[Recording] Stopping MediaRecorder, state:', recorder.state);
+      console.log('[Recording] Current chunks before stop:', chunks.length);
+      
+      // Request final data chunks before stopping
+      recorder.requestData();
+      
+      // Stop the recorder - this will trigger onstop event
+      recorder.stop();
+      
+      // Wait longer for final chunks to be collected - important for WebM files
+      setTimeout(() => {
+        console.log('[Recording] Chunks after MediaRecorder stop:', chunksRef.current.length, 'chunks');
+        console.log('[Recording] Total size:', chunksRef.current.reduce((sum, c) => sum + c.size, 0), 'bytes');
+        // Force update chunks state from ref
+        setChunks([...chunksRef.current]);
+      }, 500); // Increased delay to ensure all chunks are collected
+    }
+
+    // Calculate final duration from elapsed time
+    if (recordingStartTimeRef.current) {
+      const finalDuration = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+      console.log('[Recording] Final duration calculated:', finalDuration, 'seconds');
+      setRecordingTime(finalDuration); // Ensure final time is accurate
     }
 
     if (stream) {
+      console.log('[Recording] Stopping media stream tracks');
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
     }
 
     if (recordingIntervalRef.current) {
+      console.log('[Recording] Clearing timer interval');
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
     }
 
     setRecording(false);
     setPaused(false);
+    recordingStartTimeRef.current = null;
+    setCameraReady(false); // Reset camera ready state
     toast.success('Recording stopped');
   };
 
-  const pauseRecording = () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      mediaRecorder.pause();
-      setPaused(true);
-      
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
-    }
-  };
-
-  const resumeRecording = () => {
-    if (mediaRecorder && mediaRecorder.state === 'paused') {
-      mediaRecorder.resume();
-      setPaused(false);
-      
-      // Resume timer
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-    }
-  };
-
   const saveRecording = async () => {
-    if (!recordingBlob) return;
+    if (!recordingBlob) {
+      toast.error('No recording to save');
+      return;
+    }
 
     try {
-      // Create a temporary file URL for the recording
-      const url = URL.createObjectURL(recordingBlob);
+      console.log('[Recording] Saving recording...');
+      console.log('[Recording] Recording blob size:', recordingBlob.size, 'bytes');
       
-      // Create a temporary file name
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `recording-${timestamp}.webm`;
+      // Get the actual duration from the store at the time of saving
+      // If timer failed, calculate from start time
+      let actualRecordingTime = useRecordingStore.getState().recordingTime;
+      if (actualRecordingTime === 0 && recordingStartTimeRef.current) {
+        // Fallback: calculate from elapsed time
+        actualRecordingTime = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+        console.log('[Recording] Timer was 0, calculated duration from elapsed time:', actualRecordingTime);
+      } else {
+        console.log('[Recording] Using duration from store:', actualRecordingTime);
+      }
       
-      // Create a temporary file element to trigger download
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const arrayBuffer = await recordingBlob.arrayBuffer();
+      const result = await window.electronAPI.saveRecording(arrayBuffer);
       
-      // Clean up
-      URL.revokeObjectURL(url);
+      if (result.success && result.filePath) {
+        console.log('[Recording] Recording saved to:', result.filePath);
+        console.log('[Recording] Using duration:', actualRecordingTime, 'seconds');
+        
+        // Create a clip object for the media library
+        const clip = {
+          id: `recording-${Date.now()}`,
+          path: result.filePath,
+          name: `Recording ${new Date().toLocaleString()}`,
+          duration: actualRecordingTime, // Use actual recorded time, not stale closure value
+          width: settings.resolution.width,
+          height: settings.resolution.height,
+          frameRate: settings.frameRate,
+          codec: 'webm',
+          fileSize: recordingBlob.size,
+          trimStart: 0,
+          trimEnd: actualRecordingTime > 0 ? actualRecordingTime : 0, // Use 0 if duration is 0
+          thumbnailPath: undefined // Will be generated later
+        };
+        
+        console.log('[Recording] Created clip object:', clip);
+        
+        // Add to media library
+        addClip(clip);
+        
+        // Add to timeline if duration > 0
+        if (actualRecordingTime > 0) {
+          addClips([clip]);
+          console.log('[Recording] Added clip to timeline');
+        } else {
+          console.warn('[Recording] Duration is 0, not adding to timeline');
+        }
+        
+      toast.success('Recording saved and added to library');
       
-      // Reset recording state
+      // Reset recording state after successful save
       resetRecording();
       setChunks([]);
+      setStreamReady(false);
+      setCameraReady(false);
       
-      toast.success('Recording saved');
-      onClose();
+      onClose(); // Close the modal
+      } else {
+        throw new Error(result.error || 'Failed to save recording');
+      }
     } catch (error) {
-      console.error('Error saving recording:', error);
+      console.error('[Recording] Error saving recording:', error);
       toast.error('Failed to save recording');
     }
   };
 
+  const pauseRecording = () => {
+    console.log('[Recording] Pause button clicked');
+    const recorder = mediaRecorderRef.current;
+    console.log('[Recording] MediaRecorder state:', recorder?.state);
+    console.log('[Recording] isPaused:', isPaused);
+    console.log('[Recording] isRecording:', isRecording);
+    
+    if (recorder && recorder.state === 'recording') {
+      console.log('[Recording] Pausing MediaRecorder and timer');
+      recorder.pause();
+      setPaused(true);
+      
+      // Don't clear timer on pause - it will skip incrementing while paused
+      // Timer will continue checking state
+    } else {
+      console.log('[Recording] Cannot pause - MediaRecorder not recording');
+    }
+  };
+
+  const resumeRecording = () => {
+    console.log('[Recording] Resume button clicked');
+    const recorder = mediaRecorderRef.current;
+    console.log('[Recording] MediaRecorder state:', recorder?.state);
+    console.log('[Recording] isPaused:', isPaused);
+    
+    if (recorder && recorder.state === 'paused') {
+      console.log('[Recording] Resuming MediaRecorder');
+      recorder.resume();
+      setPaused(false);
+      
+      // Update start time to account for pause duration
+      const currentTime = useRecordingStore.getState().recordingTime;
+      if (recordingStartTimeRef.current) {
+        // Adjust start time to account for elapsed time
+        recordingStartTimeRef.current = Date.now() - (currentTime * 1000);
+      }
+      
+      // Timer is already running, it will resume incrementing automatically
+    } else {
+      console.log('[Recording] Cannot resume - MediaRecorder not paused');
+    }
+  };
+
+
   const discardRecording = () => {
     resetRecording();
     setChunks([]);
+    chunksRef.current = []; // Reset ref
+    setStreamReady(false);
+    setCameraReady(false); // Reset camera ready state
     toast.success('Recording discarded');
   };
 
@@ -226,7 +859,17 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div 
+        className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        ref={(el) => {
+          if (el && isRecording) {
+            // One-time scroll to bottom when recording starts
+            setTimeout(() => {
+              el.scrollTop = el.scrollHeight;
+            }, 100);
+          }
+        }}
+      >
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Record Screen</h2>
           <button
@@ -250,18 +893,25 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
                 <button
                   key={source.id}
                   onClick={() => updateSettings({ videoSource: source })}
-                  className={`p-4 border rounded-lg text-left transition-colors ${
+                  className={`p-4 border-2 rounded-lg text-left transition-all ${
                     settings.videoSource?.id === source.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-300 hover:border-gray-400'
+                      ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-300 shadow-lg'
+                      : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                   }`}
                 >
-                  <img
-                    src={source.thumbnail}
-                    alt={source.name}
-                    className="w-full h-24 object-cover rounded mb-2"
-                  />
-                  <div className="text-sm font-medium text-gray-900">
+                  <div className="relative">
+                    <img
+                      src={source.thumbnail}
+                      alt={source.name}
+                      className="w-full h-24 object-cover rounded mb-2"
+                    />
+                    {settings.videoSource?.id === source.id && (
+                      <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
+                        ✓
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-sm font-medium text-gray-900 truncate" title={source.name}>
                     {source.name}
                   </div>
                   <div className="text-xs text-gray-500 capitalize">
@@ -297,10 +947,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
               <select
                 value={`${settings.resolution.width}x${settings.resolution.height}`}
                 onChange={(e) => {
+                  console.log('[Recording] Resolution changed to:', e.target.value);
                   const [width, height] = e.target.value.split('x').map(Number);
                   updateSettings({ resolution: { width, height } });
                 }}
-                className="w-full p-2 border border-gray-300 rounded-md"
+                className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                style={{ color: '#111827' }}
               >
                 <option value="1920x1080">1920x1080 (1080p)</option>
                 <option value="1280x720">1280x720 (720p)</option>
@@ -314,8 +966,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
               </label>
               <select
                 value={settings.frameRate}
-                onChange={(e) => updateSettings({ frameRate: Number(e.target.value) })}
-                className="w-full p-2 border border-gray-300 rounded-md"
+                onChange={(e) => {
+                  console.log('[Recording] Frame rate changed to:', e.target.value);
+                  updateSettings({ frameRate: Number(e.target.value) });
+                }}
+                className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                style={{ color: '#111827' }}
               >
                 <option value={30}>30 FPS</option>
                 <option value={60}>60 FPS</option>
@@ -338,36 +994,97 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
               </button>
             </div>
           ) : (
-            <div className="text-center space-y-4">
-              <div className="text-2xl font-mono text-gray-900">
-                {getFormattedTime()}
-              </div>
+            <>
+              {/* Live Preview */}
+              {stream && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-center mb-2">
+                    <span className="w-3 h-3 bg-red-600 rounded-full animate-pulse mr-2"></span>
+                    <h3 className="text-lg font-medium text-gray-900">Recording...</h3>
+                  </div>
+                  {!streamReady ? (
+                    // Loading spinner while stream is initializing
+                    <div className="w-full max-w-md mx-auto border-4 border-red-500 rounded-lg bg-black h-64 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
+                        <p className="text-white text-sm">Initializing camera...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <video
+                      ref={previewVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full max-w-md mx-auto border-4 border-red-500 rounded-lg bg-black"
+                      style={{ opacity: settings.videoSource?.type === 'webcam' && !cameraReady ? 0 : 1 }}
+                      onLoadedMetadata={() => {
+                        // Ensure video plays when metadata loads
+                        if (previewVideoRef.current && streamReady) {
+                          previewVideoRef.current.play().catch(err => {
+                            console.error('[Recording] Error auto-playing video:', err);
+                          });
+                        }
+                      }}
+                    />
+                  )}
+                  {settings.videoSource?.type === 'webcam' && !cameraReady && streamReady && (
+                    <div className="text-center text-sm text-gray-500 mt-2">
+                      Camera adjusting exposure...
+                    </div>
+                  )}
+                </div>
+              )}
               
-              <div className="flex justify-center space-x-4">
-                {isPaused ? (
-                  <button
-                    onClick={resumeRecording}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                  >
-                    Resume
-                  </button>
-                ) : (
-                  <button
-                    onClick={pauseRecording}
-                    className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                  >
-                    Pause
-                  </button>
-                )}
+              <div className="text-center space-y-4">
+                {/* Timer display - use recordingTime from selector to ensure updates */}
+                <div className="text-2xl font-mono text-gray-900" key={recordingTime}>
+                  {(() => {
+                    // Use recordingTime from selector - this will trigger re-renders
+                    const minutes = Math.floor(recordingTime / 60);
+                    const seconds = Math.floor(recordingTime % 60);
+                    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                  })()}
+                </div>
                 
-                <button
-                  onClick={stopRecording}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                >
-                  Stop
-                </button>
+                <div className="flex justify-center space-x-4">
+                  {isPaused ? (
+                    <button
+                      onClick={resumeRecording}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                    >
+                      Resume
+                    </button>
+                  ) : (
+                    <button
+                      onClick={pauseRecording}
+                      className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                    >
+                      Pause
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={stopRecording}
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                  >
+                    Stop
+                  </button>
+                </div>
+                
+                {/* Save button - only show when there's a recording blob */}
+                {recordingBlob && (
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={saveRecording}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                    >
+                      Save Recording
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
+            </>
           )}
         </div>
 

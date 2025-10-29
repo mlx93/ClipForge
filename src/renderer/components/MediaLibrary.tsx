@@ -259,7 +259,19 @@ const MediaLibrary: React.FC<MediaLibraryProps> = ({ clips: propClips }) => {
                     ...clip,
                     id: `${clip.id}_timeline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
                   };
+                  
+                  // Execute the add operation first
                   addClips([timelineClip]);
+                  
+                  // Create history snapshot AFTER adding (captures state after operation)
+                  if (typeof (window as any).createHistorySnapshot === 'function') {
+                    try {
+                      (window as any).createHistorySnapshot(`Add "${clip.name}" to timeline`);
+                    } catch (error) {
+                      console.warn('Failed to create history snapshot:', error);
+                    }
+                  }
+                  
                   toast.success(`Added "${clip.name}" to timeline`);
                 }}
                 className="text-gray-400 hover:text-blue-400 transition-colors p-1"

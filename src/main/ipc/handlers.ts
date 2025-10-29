@@ -73,14 +73,14 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
   // Trim video handler
   ipcMain.handle(IPC_CHANNELS.TRIM_VIDEO, async (_, { inputPath, outputPath, trimStart, trimEnd }: { inputPath: string; outputPath: string; trimStart: number; trimEnd: number }) => {
     try {
-      await trimVideo(inputPath, outputPath, trimStart, trimEnd, (progress) => {
+      const actualOutputPath = await trimVideo(inputPath, outputPath, trimStart, trimEnd, (progress) => {
         // Send progress updates to renderer
         mainWindow.webContents.send(IPC_CHANNELS.TRIM_PROGRESS, { progress, currentStep: `Trimming video... ${progress}%` });
       });
       
       return {
         success: true,
-        outputPath
+        outputPath: actualOutputPath
       };
     } catch (error) {
       console.error('Trim video error:', error);
@@ -218,81 +218,150 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
     }
   });
 
-  // Recording handlers
-  ipcMain.handle('get-recording-sources', async () => {
+
+
+  // Get recording sources handler
+  ipcMain.handle(IPC_CHANNELS.GET_RECORDING_SOURCES, async () => {
     try {
       const { desktopCapturer } = require('electron');
       const sources = await desktopCapturer.getSources({
-        types: ['screen', 'window']
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 150, height: 150 }
       });
       
-      const recordingSources = sources.map((source: any) => ({
+      // Map desktop capture sources
+      const desktopSources = sources.map((source: any) => ({
         id: source.id,
         name: source.name,
         thumbnail: source.thumbnail.toDataURL(),
         type: source.id.startsWith('screen') ? 'screen' : 'window'
       }));
       
-      return { success: true, sources: recordingSources };
+      // Add webcam option (will use getUserMedia with video: true)
+      const webcamSource = {
+        id: 'webcam',
+        name: 'Camera',
+        thumbnail: 'data:image/svg+xml;base64,' + Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>'
+        ).toString('base64'),
+        type: 'webcam'
+      };
+      
+      return {
+        success: true,
+        sources: [webcamSource, ...desktopSources] // Put webcam first
+      };
     } catch (error) {
-      console.error('Get recording sources error:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to get recording sources' 
+      console.error('Error getting recording sources:', error);
+      return {
+        success: false,
+        sources: [],
+        error: error instanceof Error ? error.message : 'Failed to get recording sources'
       };
     }
   });
 
-  ipcMain.handle('start-recording', async (_, { videoSourceId, audioEnabled, resolution, frameRate }: {
-    videoSourceId: string;
-    audioEnabled: boolean;
-    resolution: { width: number; height: number };
-    frameRate: number;
-  }) => {
+  // Start recording handler
+  ipcMain.handle(IPC_CHANNELS.START_RECORDING, async (_, params) => {
     try {
-      const { desktopCapturer } = require('electron');
+      const { videoSourceId, audioEnabled, resolution, frameRate } = params;
       
-      // Get the video source
-      const sources = await desktopCapturer.getSources({
-        types: ['screen', 'window']
-      });
-      const source = sources.find((s: any) => s.id === videoSourceId);
-      
-      if (!source) {
-        throw new Error('Video source not found');
-      }
-      
-      // Create constraints for getUserMedia
-      const constraints: any = {
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: source.id,
-            minWidth: resolution.width,
-            maxWidth: resolution.width,
-            minHeight: resolution.height,
-            maxHeight: resolution.height,
-            minFrameRate: frameRate,
-            maxFrameRate: frameRate
-          }
-        }
-      };
-      
-      if (audioEnabled) {
-        constraints.audio = {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: source.id
+      // Check if this is a webcam recording
+      if (videoSourceId === 'webcam') {
+        // Use standard getUserMedia constraints for webcam
+        const constraints: any = {
+          video: {
+            width: { ideal: resolution.width },
+            height: { ideal: resolution.height },
+            frameRate: { ideal: frameRate }
           }
         };
+
+        if (audioEnabled) {
+          constraints.audio = true;
+        }
+
+        return {
+          success: true,
+          constraints,
+          isWebcam: true
+        };
+      } else {
+        // Use desktop capturer for screen/window recording
+        // Electron requires chromeMediaSource constraints wrapped in 'mandatory'
+        // This is the correct format for Electron desktop capture
+        const constraints: any = {
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: videoSourceId
+            },
+            optional: [
+              { minWidth: resolution.width },
+              { maxWidth: resolution.width },
+              { minHeight: resolution.height },
+              { maxHeight: resolution.height },
+              { minFrameRate: frameRate },
+              { maxFrameRate: frameRate }
+            ]
+          }
+        };
+
+        if (audioEnabled) {
+          constraints.audio = {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: videoSourceId
+            }
+          };
+        }
+
+        console.log('[Recording Handler] Generated constraints for screen recording:', JSON.stringify(constraints, null, 2));
+        console.log('[Recording Handler] Video source ID:', videoSourceId);
+
+        return {
+          success: true,
+          constraints,
+          isWebcam: false
+        };
       }
-      
-      return { success: true, constraints };
     } catch (error) {
-      console.error('Start recording error:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to start recording' 
+      console.error('Error starting recording:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to start recording'
+      };
+    }
+  });
+
+  // Save recording handler
+  ipcMain.handle(IPC_CHANNELS.SAVE_RECORDING, async (_, arrayBuffer) => {
+    try {
+      const { writeFile } = require('fs/promises');
+      const { join } = require('path');
+      const { app } = require('electron');
+      
+      // Create recordings directory if it doesn't exist
+      const recordingsDir = join(app.getPath('userData'), 'recordings');
+      await mkdir(recordingsDir, { recursive: true });
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `recording-${timestamp}.webm`;
+      const filePath = join(recordingsDir, filename);
+      
+      // Write the array buffer to file
+      await writeFile(filePath, Buffer.from(arrayBuffer));
+      
+      return {
+        success: true,
+        filePath
+      };
+    } catch (error) {
+      console.error('Error saving recording:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to save recording'
       };
     }
   });

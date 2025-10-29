@@ -84,6 +84,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     useTimelineStore.getState().clearTimeline();
     
     if (project.timeline.clips.length > 0) {
+      // Create history snapshot before loading project clips
+      if ((window as any).createHistorySnapshot) {
+        (window as any).createHistorySnapshot(`Load project with ${project.timeline.clips.length} clips`);
+      }
+      
       useTimelineStore.getState().addClips(project.timeline.clips);
     }
     

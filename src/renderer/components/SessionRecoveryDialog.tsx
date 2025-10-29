@@ -31,6 +31,11 @@ const SessionRecoveryDialog: React.FC<SessionRecoveryDialogProps> = ({
       // Clear current timeline and add project clips
       clearTimeline();
       if (sessionData.project.timeline.clips.length > 0) {
+        // Create history snapshot before restoring clips
+        if ((window as any).createHistorySnapshot) {
+          (window as any).createHistorySnapshot(`Restore session with ${sessionData.project.timeline.clips.length} clips`);
+        }
+        
         addClips(sessionData.project.timeline.clips);
         setClips(sessionData.project.timeline.clips);
       }

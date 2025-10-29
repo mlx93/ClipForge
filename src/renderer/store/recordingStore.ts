@@ -27,7 +27,7 @@ export interface RecordingState {
   // Actions
   setRecording: (isRecording: boolean) => void;
   setPaused: (isPaused: boolean) => void;
-  setRecordingTime: (time: number) => void;
+  setRecordingTime: (time: number | ((prev: number) => number)) => void;
   setAvailableSources: (sources: RecordingSource[]) => void;
   updateSettings: (settings: Partial<RecordingSettings>) => void;
   setRecordingBlob: (blob: Blob | null) => void;
@@ -57,19 +57,43 @@ export const useRecordingStore = create<RecordingState>((set, get) => ({
 
   // Actions
   setRecording: (isRecording: boolean) => {
+    console.log('[Recording Store] setRecording called with:', isRecording);
+    console.log('[Recording Store] setRecording stack trace:', new Error().stack);
+    console.log('[Recording Store] Current state before change:', { 
+      isRecording: get().isRecording, 
+      isPaused: get().isPaused,
+      recordingTime: get().recordingTime 
+    });
     set({ isRecording });
-    if (!isRecording) {
-      // Reset recording state when stopping
-      set({ isPaused: false, recordingTime: 0 });
+    if (isRecording) {
+      // When starting recording, ensure not paused
+      set({ isPaused: false });
+    } else {
+      // Only reset paused state when stopping, keep recordingTime for display
+      set({ isPaused: false });
     }
+    console.log('[Recording Store] State after change:', { 
+      isRecording: get().isRecording, 
+      isPaused: get().isPaused,
+      recordingTime: get().recordingTime 
+    });
   },
 
   setPaused: (isPaused: boolean) => {
     set({ isPaused });
   },
 
-  setRecordingTime: (time: number) => {
-    set({ recordingTime: time });
+  setRecordingTime: (time: number | ((prev: number) => number)) => {
+    if (typeof time === 'function') {
+      set((state) => {
+        const newTime = time(state.recordingTime);
+        console.log('[Recording Store] Updating time:', state.recordingTime, '->', newTime);
+        return { recordingTime: newTime };
+      });
+    } else {
+      console.log('[Recording Store] Setting time to:', time);
+      set({ recordingTime: time });
+    }
   },
 
   setAvailableSources: (sources: RecordingSource[]) => {
@@ -77,9 +101,12 @@ export const useRecordingStore = create<RecordingState>((set, get) => ({
   },
 
   updateSettings: (newSettings: Partial<RecordingSettings>) => {
-    set((state) => ({
-      settings: { ...state.settings, ...newSettings }
-    }));
+    console.log('[Recording Store] Updating settings:', newSettings);
+    set((state) => {
+      const updatedSettings = { ...state.settings, ...newSettings };
+      console.log('[Recording Store] New settings:', updatedSettings);
+      return { settings: updatedSettings };
+    });
   },
 
   setRecordingBlob: (blob: Blob | null) => {

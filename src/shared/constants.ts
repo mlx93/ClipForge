@@ -56,7 +56,8 @@ export const IPC_CHANNELS = {
   // Recording channels
   GET_RECORDING_SOURCES: 'get-recording-sources',
   START_RECORDING: 'start-recording',
-  STOP_RECORDING: 'stop-recording'
+  STOP_RECORDING: 'stop-recording',
+  SAVE_RECORDING: 'save-recording'
 } as const;
 
 // Error messages
