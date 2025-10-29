@@ -575,7 +575,9 @@
    - ✅ WebM recording with chunk management
    - ✅ Audio track detection and verification
    - ✅ MIME type includes opus codec when audio tracks present
-   - ⚠️ **KNOWN ISSUES**: Camera preview shows black screen during recording (investigating), audio recorded but not playing (investigating)
+   - ✅ Screen recording save functionality working (FFmpeg re-encoding fixed)
+   - ✅ Save button loading state prevents double-clicks
+   - ⚠️ **KNOWN ISSUES**: Screen recording audio not working (microphone fallback not triggering, no permission prompts)
 2. ✅ **Undo/Redo Functionality** - COMPLETE
    - ✅ Command pattern with state snapshots
    - ✅ 50-action history limit

@@ -290,6 +290,10 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
         // Use desktop capturer for screen/window recording
         // Electron requires chromeMediaSource constraints wrapped in 'mandatory'
         // This is the correct format for Electron desktop capture
+        // 
+        // NOTE: Desktop audio (system audio) capture does NOT work reliably on macOS
+        // The audio tracks end immediately even when requested. This is a known limitation.
+        // For screen recordings with audio, we only use microphone audio (added separately in renderer).
         const constraints: any = {
           video: {
             mandatory: {
@@ -307,16 +311,18 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
           }
         };
 
-        if (audioEnabled) {
-          constraints.audio = {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: videoSourceId
-            }
-          };
-        }
+        // DO NOT request desktop audio - it doesn't work on macOS and causes tracks to end
+        // Microphone audio will be added separately in the renderer process
+        // if (audioEnabled) {
+        //   constraints.audio = {
+        //     mandatory: {
+        //       chromeMediaSource: 'desktop',
+        //       chromeMediaSourceId: videoSourceId
+        //     }
+        //   };
+        // }
 
-        console.log('[Recording Handler] Generated constraints for screen recording:', JSON.stringify(constraints, null, 2));
+        console.log('[Recording Handler] Generated constraints for screen recording (video only, mic audio added separately):', JSON.stringify(constraints, null, 2));
         console.log('[Recording Handler] Video source ID:', videoSourceId);
 
         return {
@@ -366,20 +372,33 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
         const finalMp4Path = join(recordingsDir, `recording-${timestamp}.mp4`);
         await writeFile(finalMp4Path, Buffer.from(arrayBuffer));
         
+        // Verify file exists and has valid size
+        const fs = require('fs/promises');
+        const fileStats = await fs.stat(finalMp4Path);
+        if (fileStats.size === 0) {
+          throw new Error('Saved MP4 file is empty');
+        }
+        
         // Verify audio with ffprobe
-        const hasAudio = await new Promise<boolean>((resolve) => {
+        const metadata = await new Promise<any>((resolve, reject) => {
           ffmpeg.ffprobe(finalMp4Path, (err: any, metadata: any) => {
             if (err) {
               console.warn('[Recording Handler] Could not probe MP4 file:', err);
-              resolve(false);
+              reject(err);
               return;
             }
-            
-            const audioStream = metadata.streams?.some((stream: any) => stream.codec_type === 'audio');
-            console.log('[Recording Handler] MP4 file has audio:', audioStream);
-            resolve(audioStream);
+            resolve(metadata);
           });
         });
+        
+        // Verify we have at least one video stream
+        const videoStreams = metadata.streams?.filter((s: any) => s.codec_type === 'video');
+        if (!videoStreams || videoStreams.length === 0) {
+          throw new Error('MP4 file has no video stream');
+        }
+        
+        const hasAudio = metadata.streams?.some((stream: any) => stream.codec_type === 'audio');
+        console.log('[Recording Handler] MP4 file has audio:', hasAudio);
         
         if (!hasAudio) {
           // MP4 file has no audio - re-encode to add silent audio
@@ -387,7 +406,7 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
           const tempMp4Path = join(recordingsDir, `recording-${timestamp}-temp.mp4`);
           await writeFile(tempMp4Path, Buffer.from(arrayBuffer));
           
-          return new Promise((resolve) => {
+          return new Promise((resolve, reject) => {
             ffmpeg(tempMp4Path)
               .input('anullsrc=channel_layout=stereo:sample_rate=48000')
               .inputOptions(['-f', 'lavfi'])
@@ -399,13 +418,47 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
                 '-movflags +faststart'
               ])
               .output(finalMp4Path)
-              .on('end', () => {
-                console.log('[Recording Handler] Successfully added silent audio to MP4');
-                require('fs/promises').unlink(tempMp4Path).catch(() => {});
-                resolve({
-                  success: true,
-                  filePath: finalMp4Path
-                });
+              .on('end', async () => {
+                console.log('[Recording Handler] FFmpeg encoding completed, validating output file...');
+                
+                // Validate output file
+                try {
+                  // Wait for file handle to close
+                  await new Promise(res => setTimeout(res, 100));
+                  
+                  const outputStats = await fs.stat(finalMp4Path);
+                  if (outputStats.size === 0) {
+                    reject(new Error('Output file is empty'));
+                    return;
+                  }
+                  
+                  // Verify with ffprobe
+                  const probeResult = await new Promise<any>((probeResolve, probeReject) => {
+                    ffmpeg.ffprobe(finalMp4Path, (err: any, metadata: any) => {
+                      if (err) {
+                        probeReject(err);
+                        return;
+                      }
+                      probeResolve(metadata);
+                    });
+                  });
+                  
+                  const outputVideoStreams = probeResult.streams?.filter((s: any) => s.codec_type === 'video');
+                  if (!outputVideoStreams || outputVideoStreams.length === 0) {
+                    reject(new Error('Output file has no video stream'));
+                    return;
+                  }
+                  
+                  await fs.unlink(tempMp4Path).catch(() => {});
+                  console.log('[Recording Handler] Successfully added silent audio to MP4');
+                  resolve({
+                    success: true,
+                    filePath: finalMp4Path
+                  });
+                } catch (validationError) {
+                  console.error('[Recording Handler] File validation failed:', validationError);
+                  reject(validationError);
+                }
               })
               .on('error', (err: any) => {
                 console.error('[Recording Handler] Re-encoding error:', err);
@@ -512,17 +565,82 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
             .on('progress', (progress: any) => {
               console.log('[Recording Handler] FFmpeg progress:', progress.percent || 'unknown');
             })
-            .on('end', () => {
-              console.log('[Recording Handler] Successfully re-encoded to MP4 with audio');
-              // Delete temporary WebM file
-              require('fs/promises').unlink(tempWebmPath).catch((err: any) => {
-                console.warn('[Recording Handler] Could not delete temp WebM file:', err);
-              });
+            .on('end', async () => {
+              console.log('[Recording Handler] FFmpeg encoding completed, validating output file...');
               
-              resolve({
-                success: true,
-                filePath: finalMp4Path
-              });
+              // CRITICAL: Validate file before resolving Promise
+              try {
+                const fs = require('fs/promises');
+                const path = require('path');
+                
+                // Wait a moment for file handle to close
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Check if file exists
+                let fileStats;
+                try {
+                  fileStats = await fs.stat(finalMp4Path);
+                } catch (statError) {
+                  console.error('[Recording Handler] Output file does not exist:', finalMp4Path);
+                  reject(new Error('Output file was not created'));
+                  return;
+                }
+                
+                // Check file size (should be reasonable, not 0 bytes)
+                if (fileStats.size === 0) {
+                  console.error('[Recording Handler] Output file is empty (0 bytes)');
+                  reject(new Error('Output file is empty'));
+                  return;
+                }
+                
+                if (fileStats.size < 1024) {
+                  console.warn('[Recording Handler] Output file is suspiciously small:', fileStats.size, 'bytes');
+                  // Warn but don't fail - might be valid for very short recordings
+                }
+                
+                console.log('[Recording Handler] File exists and has size:', fileStats.size, 'bytes');
+                
+                // Verify file with ffprobe to ensure it's valid
+                const probeResult = await new Promise<any>((probeResolve, probeReject) => {
+                  ffmpeg.ffprobe(finalMp4Path, (err: any, metadata: any) => {
+                    if (err) {
+                      console.error('[Recording Handler] FFprobe failed:', err);
+                      probeReject(err);
+                      return;
+                    }
+                    probeResolve(metadata);
+                  });
+                });
+                
+                // Verify we have at least one video stream
+                const videoStreams = probeResult.streams?.filter((s: any) => s.codec_type === 'video');
+                if (!videoStreams || videoStreams.length === 0) {
+                  console.error('[Recording Handler] No video stream found in output file');
+                  reject(new Error('Output file has no video stream'));
+                  return;
+                }
+                
+                console.log('[Recording Handler] File validation passed:', {
+                  fileSize: fileStats.size,
+                  videoStreams: videoStreams.length,
+                  audioStreams: probeResult.streams?.filter((s: any) => s.codec_type === 'audio').length || 0,
+                  duration: probeResult.format?.duration || 'unknown'
+                });
+                
+                // Delete temporary WebM file
+                await fs.unlink(tempWebmPath).catch((err: any) => {
+                  console.warn('[Recording Handler] Could not delete temp WebM file:', err);
+                });
+                
+                console.log('[Recording Handler] Successfully re-encoded to MP4 with audio');
+                resolve({
+                  success: true,
+                  filePath: finalMp4Path
+                });
+              } catch (validationError) {
+                console.error('[Recording Handler] File validation failed:', validationError);
+                reject(new Error(`File validation failed: ${validationError instanceof Error ? validationError.message : String(validationError)}`));
+              }
             })
             .on('error', (err: any) => {
               console.error('[Recording Handler] FFmpeg re-encoding error:', err);
@@ -558,17 +676,82 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
             .on('progress', (progress: any) => {
               console.log('[Recording Handler] FFmpeg progress:', progress.percent || 'unknown');
             })
-            .on('end', () => {
-              console.log('[Recording Handler] Successfully re-encoded to MP4 with silent audio');
-              // Delete temporary WebM file
-              require('fs/promises').unlink(tempWebmPath).catch((err: any) => {
-                console.warn('[Recording Handler] Could not delete temp WebM file:', err);
-              });
+            .on('end', async () => {
+              console.log('[Recording Handler] FFmpeg encoding completed, validating output file...');
               
-              resolve({
-                success: true,
-                filePath: finalMp4Path
-              });
+              // CRITICAL: Validate file before resolving Promise
+              try {
+                const fs = require('fs/promises');
+                const path = require('path');
+                
+                // Wait a moment for file handle to close
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Check if file exists
+                let fileStats;
+                try {
+                  fileStats = await fs.stat(finalMp4Path);
+                } catch (statError) {
+                  console.error('[Recording Handler] Output file does not exist:', finalMp4Path);
+                  reject(new Error('Output file was not created'));
+                  return;
+                }
+                
+                // Check file size (should be reasonable, not 0 bytes)
+                if (fileStats.size === 0) {
+                  console.error('[Recording Handler] Output file is empty (0 bytes)');
+                  reject(new Error('Output file is empty'));
+                  return;
+                }
+                
+                if (fileStats.size < 1024) {
+                  console.warn('[Recording Handler] Output file is suspiciously small:', fileStats.size, 'bytes');
+                  // Warn but don't fail - might be valid for very short recordings
+                }
+                
+                console.log('[Recording Handler] File exists and has size:', fileStats.size, 'bytes');
+                
+                // Verify file with ffprobe to ensure it's valid
+                const probeResult = await new Promise<any>((probeResolve, probeReject) => {
+                  ffmpeg.ffprobe(finalMp4Path, (err: any, metadata: any) => {
+                    if (err) {
+                      console.error('[Recording Handler] FFprobe failed:', err);
+                      probeReject(err);
+                      return;
+                    }
+                    probeResolve(metadata);
+                  });
+                });
+                
+                // Verify we have at least one video stream
+                const videoStreams = probeResult.streams?.filter((s: any) => s.codec_type === 'video');
+                if (!videoStreams || videoStreams.length === 0) {
+                  console.error('[Recording Handler] No video stream found in output file');
+                  reject(new Error('Output file has no video stream'));
+                  return;
+                }
+                
+                console.log('[Recording Handler] File validation passed:', {
+                  fileSize: fileStats.size,
+                  videoStreams: videoStreams.length,
+                  audioStreams: probeResult.streams?.filter((s: any) => s.codec_type === 'audio').length || 0,
+                  duration: probeResult.format?.duration || 'unknown'
+                });
+                
+                // Delete temporary WebM file
+                await fs.unlink(tempWebmPath).catch((err: any) => {
+                  console.warn('[Recording Handler] Could not delete temp WebM file:', err);
+                });
+                
+                console.log('[Recording Handler] Successfully re-encoded to MP4 with silent audio');
+                resolve({
+                  success: true,
+                  filePath: finalMp4Path
+                });
+              } catch (validationError) {
+                console.error('[Recording Handler] File validation failed:', validationError);
+                reject(new Error(`File validation failed: ${validationError instanceof Error ? validationError.message : String(validationError)}`));
+              }
             })
             .on('error', (err: any) => {
               console.error('[Recording Handler] FFmpeg re-encoding error:', err);

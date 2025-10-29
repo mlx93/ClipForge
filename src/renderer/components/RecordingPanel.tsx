@@ -40,7 +40,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
   const [chunks, setChunks] = useState<Blob[]>([]);
   const [cameraReady, setCameraReady] = useState(false); // Track if camera exposure is ready
   const [streamReady, setStreamReady] = useState(false); // Track if stream is ready for preview
+  const [isSaving, setIsSaving] = useState(false); // Track if recording is being saved
   const micStreamRef = useRef<MediaStream | null>(null); // Keep reference to mic stream for screen recording
+  const audioContextRef = useRef<AudioContext | null>(null); // Keep audio context alive to consume mic stream
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null); // Keep audio source node alive
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -70,6 +73,21 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(track => track.stop());
         micStreamRef.current = null;
+      }
+      // Clean up audio context
+      if (audioSourceRef.current) {
+        try {
+          audioSourceRef.current.disconnect();
+        } catch (e) {
+          console.warn('[Recording] Error disconnecting audio source:', e);
+        }
+        audioSourceRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(e => {
+          console.warn('[Recording] Error closing audio context:', e);
+        });
+        audioContextRef.current = null;
       }
       resetRecording();
     }
@@ -442,28 +460,49 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
         audioSourceValue: settings.audioSource
       });
       
-      if (!result.isWebcam && settings.audioSource) {
+      // CRITICAL FIX: Use explicit boolean check and ensure condition is met
+      const isScreenRecording = !result.isWebcam;
+      const audioRequested = Boolean(settings.audioSource);
+      
+      console.log('[Recording] Audio check conditions:', {
+        isScreenRecording,
+        audioRequested,
+        willAddMicAudio: isScreenRecording && audioRequested
+      });
+      
+      if (isScreenRecording && audioRequested) {
         console.log('[Recording] ===== ADDING MICROPHONE AUDIO =====');
         const currentAudioTracks = mediaStream.getAudioTracks();
         console.log('[Recording] Screen recording with audio requested. Current audio tracks:', currentAudioTracks.length);
         
-        // Check if desktop audio tracks are actually working (not ended)
-        const activeAudioTracks = currentAudioTracks.filter(track => track.readyState === 'live');
-        console.log('[Recording] Active (live) audio tracks:', activeAudioTracks.length);
-        
-        // ALWAYS add microphone audio for screen recording if audio is requested
-        // Desktop audio capture often fails or ends immediately, so we proactively add mic audio
-        console.log('[Recording] Proactively adding microphone audio for screen recording...');
+        // Desktop audio (system audio) does NOT work on macOS - tracks end immediately
+        // We only use microphone audio for screen recordings
+        console.log('[Recording] Note: Desktop audio capture is not supported on macOS');
+        console.log('[Recording] Adding microphone audio for screen recording...');
         
         try {
           // Request microphone audio separately
           console.log('[Recording] Calling getUserMedia for microphone...');
+          console.log('[Recording] Requesting microphone permission...');
+          
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: true
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          }).catch((error) => {
+            console.error('[Recording] getUserMedia for microphone FAILED:', error);
+            console.error('[Recording] Error name:', error.name);
+            console.error('[Recording] Error message:', error.message);
+            throw error; // Re-throw to be caught by outer catch
           });
+          
           console.log('[Recording] Microphone stream obtained:', micStream.id);
+          console.log('[Recording] Microphone stream active:', micStream.active);
           
           // Store reference to mic stream so it doesn't get garbage collected
+          // CRITICAL: Keep this reference alive for the entire recording duration
           micStreamRef.current = micStream;
           
           // Get audio tracks from microphone stream
@@ -472,21 +511,39 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
           
           if (micAudioTracks.length > 0) {
             console.log('[Recording] Adding microphone audio tracks to screen recording:', micAudioTracks.length);
-            // Add microphone audio tracks to the screen stream
+            
+            // Add microphone audio tracks to the screen stream FIRST
             micAudioTracks.forEach(track => {
-              mediaStream.addTrack(track);
-              console.log('[Recording] Added audio track:', track.label, 'enabled:', track.enabled, 'readyState:', track.readyState);
-              
-              // Ensure track is enabled
-              if (!track.enabled) {
-                track.enabled = true;
-                console.log('[Recording] Enabled audio track:', track.label);
+              // CRITICAL: Ensure track is enabled and live before adding
+              if (track.readyState === 'live') {
+                mediaStream.addTrack(track);
+                console.log('[Recording] Added audio track:', track.label, 'enabled:', track.enabled, 'readyState:', track.readyState);
+                
+                // Ensure track is enabled
+                if (!track.enabled) {
+                  track.enabled = true;
+                  console.log('[Recording] Enabled audio track:', track.label);
+                }
+                
+                // Monitor audio track to ensure it stays alive
+                track.addEventListener('ended', () => {
+                  console.error('[Recording] CRITICAL: Microphone audio track ended unexpectedly!');
+                  console.error('[Recording] Track state:', {
+                    label: track.label,
+                    enabled: track.enabled,
+                    readyState: track.readyState,
+                    muted: track.muted
+                  });
+                });
+                
+                // Monitor mute state
+                track.addEventListener('mute', () => {
+                  console.warn('[Recording] Microphone audio track became muted!');
+                  track.enabled = true; // Force enabled
+                });
+              } else {
+                console.warn('[Recording] Microphone track is not live, skipping:', track.readyState);
               }
-              
-              // Monitor audio track to ensure it stays alive
-              track.addEventListener('ended', () => {
-                console.error('[Recording] CRITICAL: Microphone audio track ended unexpectedly!');
-              });
             });
             
             // CRITICAL: Don't stop the mic stream - keep it alive during recording
@@ -505,52 +562,62 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
                 muted: track.muted
               });
             });
+            
+            // CRITICAL: Create AudioContext to consume the COMBINED stream (not just mic stream)
+            // This keeps ALL audio tracks alive including the ones we just added
+            try {
+              const audioContext = new AudioContext();
+              audioContextRef.current = audioContext;
+              
+              // Create a source node from the COMBINED stream (includes mic tracks we just added)
+              // This actively consumes ALL tracks in the stream and keeps them alive
+              const sourceNode = audioContext.createMediaStreamSource(mediaStream);
+              audioSourceRef.current = sourceNode;
+              
+              // Create an AnalyserNode to consume audio data without outputting
+              // This keeps ALL tracks active and prevents them from ending
+              const analyser = audioContext.createAnalyser();
+              analyser.fftSize = 2048;
+              sourceNode.connect(analyser);
+              
+              // Also connect to a silent gain node to ensure consumption
+              const gainNode = audioContext.createGain();
+              gainNode.gain.value = 0; // Silent
+              sourceNode.connect(gainNode);
+              
+              console.log('[Recording] Created AudioContext to keep COMBINED stream alive (includes mic tracks)');
+            } catch (audioContextError) {
+              console.error('[Recording] Failed to create AudioContext:', audioContextError);
+              // Continue anyway - MediaRecorder might still work
+            }
           } else {
             console.warn('[Recording] No microphone audio tracks available');
             micStream.getTracks().forEach(track => track.stop());
             micStreamRef.current = null;
+            toast.error('No microphone audio tracks found. Please check your microphone settings.');
           }
         } catch (micError) {
           console.error('[Recording] ===== ERROR ADDING MICROPHONE AUDIO =====');
           console.error('[Recording] Could not add microphone audio:', micError);
           micStreamRef.current = null;
           // Show error toast if microphone permission is denied
-          if (micError instanceof Error && micError.name === 'NotAllowedError') {
-            toast.error('Microphone access is required for screen recording with audio. Please enable it in System Settings.');
+          if (micError instanceof Error && (micError.name === 'NotAllowedError' || micError.name === 'PermissionDeniedError')) {
+            toast.error('Microphone access is required for screen recording with audio. Please enable it in System Settings > Privacy & Security > Microphone.', { duration: 8000 });
+          } else {
+            toast.error('Failed to access microphone. Please check your microphone settings.', { duration: 5000 });
           }
           // Continue without audio - screen recording will work without it
         }
         
-        // Also monitor desktop audio tracks if they exist (they often end immediately)
+        // Desktop audio is not used - we removed the desktop audio constraint
+        // Only microphone audio is used for screen recordings
         if (currentAudioTracks.length > 0) {
-          console.log('[Recording] Monitoring desktop audio tracks:', currentAudioTracks.length);
+          console.log('[Recording] Warning: Found unexpected desktop audio tracks (should be mic-only):', currentAudioTracks.length);
+          // Remove any desktop audio tracks as they don't work reliably
           currentAudioTracks.forEach((track, idx) => {
-            console.log(`[Recording] Desktop audio track ${idx}:`, {
-              label: track.label,
-              enabled: track.enabled,
-              readyState: track.readyState,
-              muted: track.muted
-            });
-            
-            // Monitor these tracks - they might end unexpectedly
-            track.addEventListener('ended', () => {
-              console.error(`[Recording] CRITICAL: Desktop audio track ${idx} ended unexpectedly!`);
-              // If desktop audio track ends and we don't have mic audio, try to add it
-              const remainingAudioTracks = mediaStream.getAudioTracks();
-              if (remainingAudioTracks.length === 0 && !micStreamRef.current) {
-                console.log('[Recording] Desktop audio track ended, attempting to add microphone audio as fallback...');
-                navigator.mediaDevices.getUserMedia({ audio: true }).then(micStream => {
-                  micStreamRef.current = micStream;
-                  const micTracks = micStream.getAudioTracks();
-                  micTracks.forEach(micTrack => {
-                    mediaStream.addTrack(micTrack);
-                    console.log('[Recording] Added microphone audio track as fallback:', micTrack.label);
-                  });
-                }).catch(err => {
-                  console.error('[Recording] Could not add microphone audio fallback:', err);
-                });
-              }
-            });
+            console.log(`[Recording] Removing desktop audio track ${idx}:`, track.label);
+            mediaStream.removeTrack(track);
+            track.stop();
           });
         }
       } else {
@@ -582,7 +649,12 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
         setCameraReady(false);
       }
 
-      // Create MediaRecorder
+      // CRITICAL: For screen recordings with microphone audio, create MediaRecorder IMMEDIATELY
+      // after adding tracks to prevent them from ending. The tracks need MediaRecorder to start
+      // consuming them ASAP, otherwise they end before recording begins.
+      const videoTracks = mediaStream.getVideoTracks();
+      const audioTracks = mediaStream.getAudioTracks();
+      
       console.log('[Recording] Creating MediaRecorder with stream:', mediaStream);
       console.log('[Recording] Stream tracks:', mediaStream.getTracks().map(track => ({
         kind: track.kind,
@@ -593,9 +665,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
         muted: track.muted
       })));
       
-      // Check if we have video tracks
-      const videoTracks = mediaStream.getVideoTracks();
-      const audioTracks = mediaStream.getAudioTracks();
       console.log('[Recording] Video tracks count:', videoTracks.length);
       console.log('[Recording] Audio tracks count:', audioTracks.length);
       
@@ -604,20 +673,10 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       } else {
         const videoTrack = videoTracks[0];
         console.log('[Recording] Video track details:', videoTrack.getSettings());
-        console.log('[Recording] Video track constraints:', videoTrack.getConstraints());
-        console.log('[Recording] Video track capabilities:', videoTrack.getCapabilities());
         
         // Check if the video track is actually producing frames
         videoTrack.addEventListener('ended', () => {
           console.log('[Recording] Video track ended!');
-        });
-        
-        videoTrack.addEventListener('mute', () => {
-          console.log('[Recording] Video track muted!');
-        });
-        
-        videoTrack.addEventListener('unmute', () => {
-          console.log('[Recording] Video track unmuted!');
         });
       }
       
@@ -626,7 +685,6 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
         console.warn('[Recording] No audio tracks found in stream! Audio may not be recorded.');
         if (settings.audioSource && !result.isWebcam) {
           console.warn('[Recording] Screen recording requested audio but no audio tracks available.');
-          console.warn('[Recording] This may be an Electron permissions issue - system audio capture requires additional permissions.');
         }
       } else {
         console.log('[Recording] Audio tracks found:', audioTracks.length);
@@ -635,8 +693,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
             label: track.label,
             enabled: track.enabled,
             muted: track.muted,
-            readyState: track.readyState,
-            settings: track.getSettings()
+            readyState: track.readyState
           });
           
           // Ensure audio track is enabled
@@ -649,34 +706,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
           track.addEventListener('ended', () => {
             console.error(`[Recording] Audio track ${index} ended unexpectedly!`);
           });
-          
-          track.addEventListener('mute', () => {
-            console.error(`[Recording] Audio track ${index} became muted!`);
-          });
         });
       }
       
-      // Try different MIME types in order of preference
-      // Note: MP4 recording is supported in Chrome 126+ (June 2024) and newer Electron versions
-      // However, WebM is more reliable for streaming/recording scenarios
-      // We'll try MP4 first, but fall back to WebM if not supported
+      // Use audio tracks immediately - don't wait
       const hasAudio = audioTracks.length > 0;
-      
-      // CRITICAL: Verify audio tracks are actually enabled and producing data
-      if (hasAudio) {
-        const enabledAudioTracks = audioTracks.filter(t => t.enabled && t.readyState === 'live');
-        if (enabledAudioTracks.length === 0) {
-          console.error('[Recording] WARNING: Audio tracks exist but none are enabled/live!');
-          console.error('[Recording] Audio tracks state:', audioTracks.map(t => ({
-            enabled: t.enabled,
-            readyState: t.readyState,
-            muted: t.muted,
-            label: t.label
-          })));
-        } else {
-          console.log('[Recording] Audio tracks verified:', enabledAudioTracks.length, 'enabled and live');
-        }
-      }
       
       // Try MP4 first (if supported by Electron version)
       let mimeType = hasAudio 
@@ -825,6 +859,56 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       // Reset recording time to 0 BEFORE starting
       setRecordingTime(0);
       setRecording(true);
+      
+      // CRITICAL: For screen recordings with audio, start MediaRecorder IMMEDIATELY
+      // to prevent audio tracks from ending. Don't wait for delays.
+      if (!result.isWebcam && settings.audioSource && hasAudio) {
+        console.log('[Recording] Screen recording with audio - starting MediaRecorder IMMEDIATELY to prevent track ending');
+        setCameraReady(true);
+        setStreamReady(true);
+        
+        // Wait a tiny bit (50ms) to ensure AudioContext is fully set up and consuming tracks
+        // Then start MediaRecorder to also consume tracks
+        setTimeout(() => {
+          // Verify tracks are still alive before starting
+          const tracksBeforeStart = mediaStream.getAudioTracks();
+          console.log('[Recording] Audio tracks before MediaRecorder start:', tracksBeforeStart.length);
+          tracksBeforeStart.forEach((track, idx) => {
+            console.log(`[Recording] Track ${idx} before start:`, {
+              label: track.label,
+              enabled: track.enabled,
+              readyState: track.readyState,
+              muted: track.muted
+            });
+          });
+          
+          // Start recording immediately
+          recordingStartTimeRef.current = Date.now();
+          
+          // Start timer immediately
+          const timerCallback = () => {
+            try {
+              const currentState = useRecordingStore.getState();
+              const startTime = recordingStartTimeRef.current;
+              if (currentState.isRecording && !currentState.isPaused && startTime) {
+                const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                setRecordingTime(elapsedSeconds);
+              }
+            } catch (error) {
+              console.error('[Recording] Timer callback error:', error);
+            }
+          };
+          recordingIntervalRef.current = setInterval(timerCallback, 100);
+          
+          // Start recorder immediately
+          const timeslice = 500; // 500ms for screen recording
+          console.log('[Recording] Starting MediaRecorder immediately with timeslice:', timeslice);
+          recorder.start(timeslice);
+          console.log('[Recording] MediaRecorder started immediately, state:', recorder.state);
+        }, 50); // Small delay to ensure AudioContext is active
+        
+        return; // Exit early - don't continue with delay logic
+      }
       
       // For webcam, wait 600ms for camera exposure adjustment, then start recording + show preview together
       const cameraDelay = result.isWebcam ? 600 : 0; // 0.6 seconds for camera exposure
@@ -1064,8 +1148,30 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
     // Stop microphone stream if it exists (for screen recording)
     if (micStreamRef.current) {
       console.log('[Recording] Stopping microphone stream');
-      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current.getTracks().forEach(track => {
+        // Clear keep-alive interval if it exists
+        if ((track as any)._keepAliveInterval) {
+          clearInterval((track as any)._keepAliveInterval);
+          delete (track as any)._keepAliveInterval;
+        }
+        track.stop();
+      });
       micStreamRef.current = null;
+    }
+    // Clean up audio context
+    if (audioSourceRef.current) {
+      try {
+        audioSourceRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Recording] Error disconnecting audio source:', e);
+      }
+      audioSourceRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(e => {
+        console.warn('[Recording] Error closing audio context:', e);
+      });
+      audioContextRef.current = null;
     }
 
     if (recordingIntervalRef.current) {
@@ -1087,7 +1193,14 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       return;
     }
 
+    // Prevent double-clicking save button
+    if (isSaving) {
+      console.log('[Recording] Save already in progress, ignoring duplicate click');
+      return;
+    }
+
     try {
+      setIsSaving(true);
       console.log('[Recording] Saving recording...');
       console.log('[Recording] Recording blob size:', recordingBlob.size, 'bytes');
       
@@ -1148,11 +1261,24 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       
       onClose(); // Close the modal
       } else {
-        throw new Error(result.error || 'Failed to save recording');
+        // Enhanced error handling for save failures
+        const errorMessage = result.error || 'Failed to save recording';
+        console.error('[Recording] Save error:', errorMessage);
+        
+        // Check if it's a validation error
+        if (errorMessage.includes('validation') || errorMessage.includes('empty') || errorMessage.includes('no video stream')) {
+          toast.error('Recording file validation failed. The file may be corrupted. Please try recording again.', { duration: 8000 });
+        } else {
+          toast.error(`Failed to save recording: ${errorMessage}`, { duration: 5000 });
+        }
+        
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('[Recording] Error saving recording:', error);
       toast.error('Failed to save recording');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1446,9 +1572,22 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
                   <div className="mt-4 text-center">
                     <button
                       onClick={saveRecording}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                      disabled={isSaving}
+                      className={`bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                        isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                     >
-                      Save Recording
+                      {isSaving ? (
+                        <>
+                          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Recording'
+                      )}
                     </button>
                   </div>
                 )}
@@ -1472,13 +1611,29 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
               <div className="mt-4 flex justify-center space-x-4">
                 <button
                   onClick={saveRecording}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                  disabled={isSaving}
+                  className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                    isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Save Recording
+                  {isSaving ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Recording'
+                  )}
                 </button>
                 <button
                   onClick={discardRecording}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                  disabled={isSaving}
+                  className={`bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors ${
+                    isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
                   Discard
                 </button>

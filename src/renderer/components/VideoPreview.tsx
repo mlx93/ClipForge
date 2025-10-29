@@ -255,8 +255,46 @@ const VideoPreview: React.FC = () => {
     handleEndedRef.current = handleEnded;
   }, [handleEnded]);
 
-  const handleError = useCallback(() => {
+  const handleError = useCallback(async () => {
     console.error('[Video Error] Failed to load:', currentClip?.path);
+    
+    // Enhanced error logging with file validation
+    if (currentClip?.path) {
+      try {
+        // Check if file exists via IPC
+        const fileExists = await window.electronAPI.checkFileExists(currentClip.path);
+        console.error('[Video Error] File exists check:', fileExists);
+        
+        // Get file stats if possible
+        try {
+          const filePath = currentClip.path;
+          console.error('[Video Error] File path:', filePath);
+          console.error('[Video Error] Video element state:', {
+            src: videoRef.current?.src,
+            networkState: videoRef.current?.networkState,
+            readyState: videoRef.current?.readyState,
+            error: videoRef.current?.error
+          });
+          
+          if (videoRef.current?.error) {
+            const error = videoRef.current.error;
+            console.error('[Video Error] Media error details:', {
+              code: error.code,
+              message: error.message,
+              MEDIA_ERR_ABORTED: error.code === error.MEDIA_ERR_ABORTED,
+              MEDIA_ERR_NETWORK: error.code === error.MEDIA_ERR_NETWORK,
+              MEDIA_ERR_DECODE: error.code === error.MEDIA_ERR_DECODE,
+              MEDIA_ERR_SRC_NOT_SUPPORTED: error.code === error.MEDIA_ERR_SRC_NOT_SUPPORTED
+            });
+          }
+        } catch (statError) {
+          console.error('[Video Error] Could not get file stats:', statError);
+        }
+      } catch (checkError) {
+        console.error('[Video Error] File existence check failed:', checkError);
+      }
+    }
+    
     videoReadyStateRef.current = 'error';
     setHasError(true);
     setErrorMessage('Unable to load video. File may be corrupted or unsupported format.');
