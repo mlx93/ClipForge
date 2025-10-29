@@ -227,25 +227,27 @@ const App: React.FC = () => {
         </div>
         
         {/* Center Section - App Title and Project */}
-        <div className="flex-1 flex justify-center items-center space-x-6">
-          {/* App Title */}
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-white mb-1">SimpleCut</h1>
-            <span className="text-sm text-gray-300">v2.0.0</span>
-          </div>
-          
-          {/* Project Title Box */}
-          {currentProject && (
-            <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl px-6 py-3 border border-gray-600/50 shadow-lg">
-              <div className="text-center">
-                <div className="text-sm text-gray-400 mb-1">Current Project</div>
-                <div className="text-xl font-semibold text-white">
-                  {currentProject.name}
-                  {isDirty && <span className="text-yellow-400 ml-1">*</span>}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center space-x-8">
+            {/* App Title */}
+            <div className="text-center">
+              <h1 className="text-3xl font-bold text-white mb-1">SimpleCut</h1>
+              <span className="text-sm text-gray-300">v2.0.0</span>
+            </div>
+            
+            {/* Project Title Box */}
+            {currentProject && (
+              <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl px-6 py-3 border border-gray-600/50 shadow-lg">
+                <div className="text-center">
+                  <div className="text-sm text-gray-400 mb-1">Current Project</div>
+                  <div className="text-xl font-semibold text-white">
+                    {currentProject.name}
+                    {isDirty && <span className="text-yellow-400 ml-1">*</span>}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         
         {/* Right Section - Action Buttons */}

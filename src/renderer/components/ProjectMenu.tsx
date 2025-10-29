@@ -60,6 +60,8 @@ const ProjectMenu: React.FC = () => {
 
     if (!result.canceled && result.filePaths?.[0]) {
       setIsLoading(true);
+      // Set saving flag to prevent dirty flag from being set during open
+      (window as any).isSavingRef = { current: true };
       try {
         const loadResult = await electronAPI.loadProject(result.filePaths[0]);
         if (loadResult.success && loadResult.project) {
@@ -71,6 +73,10 @@ const ProjectMenu: React.FC = () => {
         alert('Failed to load project: ' + (error instanceof Error ? error.message : 'Unknown error'));
       } finally {
         setIsLoading(false);
+        // Clear saving flag after open completes
+        setTimeout(() => {
+          (window as any).isSavingRef = { current: false };
+        }, 200);
       }
     }
   };
@@ -138,6 +144,8 @@ const ProjectMenu: React.FC = () => {
       };
 
       setIsLoading(true);
+      // Set saving flag to prevent dirty flag from being set during save as
+      (window as any).isSavingRef = { current: true };
       try {
         const saveResult = await electronAPI.saveProject(newProjectData);
         if (saveResult.success) {
@@ -149,6 +157,10 @@ const ProjectMenu: React.FC = () => {
         alert('Failed to save project: ' + (error instanceof Error ? error.message : 'Unknown error'));
       } finally {
         setIsLoading(false);
+        // Clear saving flag after save as completes
+        setTimeout(() => {
+          (window as any).isSavingRef = { current: false };
+        }, 200);
       }
     }
   };
