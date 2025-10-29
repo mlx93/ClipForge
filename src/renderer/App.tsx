@@ -4,25 +4,51 @@ import { useTimelineStore } from './store/timelineStore';
 import { useExportStore } from './store/exportStore';
 import { useMediaLibraryStore } from './store/mediaLibraryStore';
 import { useProjectStore } from './store/projectStore';
+import { useShortcutsStore } from './store/shortcutsStore';
+import { useSessionStore } from './store/sessionStore';
 import ImportZone from './components/ImportZone';
 import MediaLibrary from './components/MediaLibrary';
 import Timeline from './components/Timeline';
 import VideoPreview from './components/VideoPreview';
+import HistoryControls from './components/HistoryControls';
+import SessionRecoveryDialog from './components/SessionRecoveryDialog';
+import ShortcutsModal from './components/ShortcutsModal';
 import { Clip } from '@shared/types';
 
 // Lazy load components that are not immediately needed
 const ExportDialog = lazy(() => import('./components/ExportDialog'));
 const ProjectMenu = lazy(() => import('./components/ProjectMenu'));
+const RecordingPanel = lazy(() => import('./components/RecordingPanel'));
 
 const App: React.FC = () => {
   const { clips, addClips } = useTimelineStore();
   const { isExporting, showExportDialog, setShowExportDialog } = useExportStore();
   const { clips: mediaLibraryClips, setClips } = useMediaLibraryStore();
-  const { setDirty, currentProject } = useProjectStore();
+  const { setDirty, currentProject, enableAutoSave } = useProjectStore();
+  const { registerDefaultShortcuts, handleKeyDown } = useShortcutsStore();
+  const { hasRecoveryData, loadSession } = useSessionStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [showRecordingPanel, setShowRecordingPanel] = useState(false);
+  const [showSessionRecovery, setShowSessionRecovery] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const initialLoadRef = React.useRef(true);
 
   useEffect(() => {
+    // Check for session recovery on app start
+    if (hasRecoveryData()) {
+      setShowSessionRecovery(true);
+    }
+    
+    // Initialize keyboard shortcuts
+    registerDefaultShortcuts();
+    
+    // Set up keyboard event listener
+    const handleKeyDownEvent = (event: KeyboardEvent) => {
+      handleKeyDown(event);
+    };
+    
+    document.addEventListener('keydown', handleKeyDownEvent);
+    
     // Set up IPC listeners
     const handleImportVideos = (filePaths: string[]) => {
       handleImportFiles(filePaths);
@@ -89,6 +115,9 @@ const App: React.FC = () => {
       window.electronAPI.removeAllListeners('menu-save-project-as');
       window.electronAPI.removeAllListeners('menu-import-videos');
       window.electronAPI.removeAllListeners('menu-export-video');
+      
+      // Cleanup keyboard event listener
+      document.removeEventListener('keydown', handleKeyDownEvent);
     };
   }, []);
 
@@ -184,19 +213,38 @@ const App: React.FC = () => {
           WebkitAppRegion: 'drag' as any
         }}
       >
-        <div className="flex items-center space-x-4">
-          <h1 className="text-xl font-bold text-white">ClipForge</h1>
-          <span className="text-sm text-gray-400">v1.0.0</span>
+        <div className="flex items-center space-x-4 ml-16">
+          <h1 className="text-2xl font-bold text-white">ClipForge</h1>
+          <span className="text-sm text-gray-400">v1.2.0</span>
         </div>
         
         <div className="flex items-center space-x-4" style={{ WebkitAppRegion: 'no-drag' as any }}>
           <Suspense fallback={<div className="text-gray-400 text-sm">Loading...</div>}>
             <ProjectMenu />
           </Suspense>
+          <HistoryControls />
+          <button
+            onClick={() => setShowShortcuts(true)}
+            data-action="shortcuts"
+            className="text-gray-300 hover:text-white px-3 py-2 rounded-lg font-medium transition-colors"
+            title="Keyboard Shortcuts (F1)"
+          >
+            Shortcuts
+          </button>
+          <button
+            onClick={() => setShowRecordingPanel(true)}
+            data-action="record"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            title="Record (Cmd+R)"
+          >
+            Record
+          </button>
           <button
             onClick={() => setShowExportDialog(true)}
             disabled={clips.length === 0 || isExporting}
+            data-action="export"
             className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Export (Cmd+E)"
           >
             {isExporting ? 'Exporting...' : 'Export'}
           </button>
@@ -250,6 +298,29 @@ const App: React.FC = () => {
           onClose={() => setShowExportDialog(false)} 
         />
       </Suspense>
+
+      {/* Recording Panel */}
+      <Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6">Loading recording panel...</div>
+      </div>}>
+        <RecordingPanel 
+          isOpen={showRecordingPanel} 
+          onClose={() => setShowRecordingPanel(false)} 
+        />
+      </Suspense>
+
+      {/* Session Recovery Dialog */}
+      <SessionRecoveryDialog 
+        isOpen={showSessionRecovery} 
+        onClose={() => setShowSessionRecovery(false)}
+        onRecover={() => setShowSessionRecovery(false)}
+      />
+
+      {/* Shortcuts Modal */}
+      <ShortcutsModal 
+        isOpen={showShortcuts} 
+        onClose={() => setShowShortcuts(false)} 
+      />
     </div>
   );
 };

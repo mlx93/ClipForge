@@ -3,6 +3,7 @@ import { useTimelineStore } from '../store/timelineStore';
 import { useExportStore } from '../store/exportStore';
 import { ExportSettings } from '@shared/types';
 import { IPC_CHANNELS } from '@shared/constants';
+import CloudExport from './CloudExport';
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -29,6 +30,8 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
     resolution: RESOLUTION_OPTIONS[1], // Default to 720p
   });
   const [selectedFormat, setSelectedFormat] = useState(FORMAT_OPTIONS[0]); // Default to MP4
+  const [showCloudExport, setShowCloudExport] = useState(false);
+  const [exportedVideoPath, setExportedVideoPath] = useState<string>('');
 
   // Generate preview thumbnail when settings change
   useEffect(() => {
@@ -266,19 +269,40 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
               </div>
             )}
 
-            {/* Cancel Button */}
-            <button
-              onClick={() => {
-                resetExport();
-                onClose();
-              }}
-              className="w-full px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-            >
-              {error ? 'Close' : 'Cancel Export'}
-            </button>
+            {/* Action Buttons */}
+            <div className="space-y-2">
+              {progress === 100 && !error && (
+                <button
+                  onClick={() => {
+                    setExportedVideoPath(settings.outputPath);
+                    setShowCloudExport(true);
+                  }}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                >
+                  Share to Cloud
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  resetExport();
+                  onClose();
+                }}
+                className="w-full px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+              >
+                {error ? 'Close' : 'Cancel Export'}
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Cloud Export Dialog */}
+      <CloudExport
+        isOpen={showCloudExport}
+        onClose={() => setShowCloudExport(false)}
+        videoPath={exportedVideoPath}
+        videoName={exportedVideoPath.split('/').pop() || 'video'}
+      />
     </div>
   );
 };

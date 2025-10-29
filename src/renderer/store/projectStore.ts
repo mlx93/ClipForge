@@ -1,12 +1,16 @@
 import { create } from 'zustand';
 import { Project, ProjectSettings, DEFAULT_PROJECT_SETTINGS } from '@shared/types';
 import { useTimelineStore } from './timelineStore';
+import { useSessionStore } from './sessionStore';
 
 interface ProjectStore {
   // State
   currentProject: Project | null;
   isDirty: boolean;
   lastSaved: Date | null;
+  autoSaveEnabled: boolean;
+  autoSaveInterval: number; // in milliseconds
+  autoSaveTimer: NodeJS.Timeout | null;
   
   // Actions
   newProject: (name: string, path: string) => void;
@@ -14,6 +18,12 @@ interface ProjectStore {
   saveProject: () => Promise<boolean>;
   setDirty: (dirty: boolean) => void;
   updateSettings: (settings: Partial<ProjectSettings>) => void;
+  
+  // Auto-save actions
+  enableAutoSave: () => void;
+  disableAutoSave: () => void;
+  setAutoSaveInterval: (interval: number) => void;
+  autoSave: () => Promise<void>;
   
   // Getters
   getProjectData: () => Project | null;
@@ -24,6 +34,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   currentProject: null,
   isDirty: false,
   lastSaved: null,
+  autoSaveEnabled: true,
+  autoSaveInterval: 2 * 60 * 1000, // 2 minutes in milliseconds
+  autoSaveTimer: null,
 
   // Actions
   newProject: (name: string, path: string) => {
@@ -50,6 +63,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       isDirty: false,
       lastSaved: null
     });
+    
+    // Enable auto-save for new project
+    get().enableAutoSave();
+    
+    // Save session for recovery
+    useSessionStore.getState().saveSession(project);
   },
 
   loadProject: (project: Project) => {
@@ -75,6 +94,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }
     
     useTimelineStore.getState().setZoom(project.timeline.zoom);
+    
+    // Enable auto-save for loaded project
+    get().enableAutoSave();
+    
+    // Save session for recovery
+    useSessionStore.getState().saveSession(project);
   },
 
   saveProject: async () => {
@@ -154,5 +179,68 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         zoom: timelineState.zoom
       }
     };
+  },
+
+  // Auto-save actions
+  enableAutoSave: () => {
+    const { autoSaveEnabled, autoSaveInterval, currentProject } = get();
+    
+    if (autoSaveEnabled || !currentProject) return;
+    
+    set({ autoSaveEnabled: true });
+    
+    // Start auto-save timer
+    const timer = setInterval(() => {
+      get().autoSave();
+    }, autoSaveInterval);
+    
+    set({ autoSaveTimer: timer });
+  },
+
+  disableAutoSave: () => {
+    const { autoSaveTimer } = get();
+    
+    if (autoSaveTimer) {
+      clearInterval(autoSaveTimer);
+    }
+    
+    set({ 
+      autoSaveEnabled: false,
+      autoSaveTimer: null 
+    });
+  },
+
+  setAutoSaveInterval: (interval: number) => {
+    const { autoSaveEnabled, autoSaveTimer } = get();
+    
+    set({ autoSaveInterval: interval });
+    
+    // Restart timer if auto-save is enabled
+    if (autoSaveEnabled && autoSaveTimer) {
+      clearInterval(autoSaveTimer);
+      const newTimer = setInterval(() => {
+        get().autoSave();
+      }, interval);
+      set({ autoSaveTimer: newTimer });
+    }
+  },
+
+  autoSave: async () => {
+    const { currentProject, isDirty, autoSaveEnabled } = get();
+    
+    if (!autoSaveEnabled || !currentProject || !isDirty) return;
+    
+    try {
+      console.log('Auto-saving project...');
+      const success = await get().saveProject();
+      
+      if (success) {
+        console.log('Auto-save completed successfully');
+      } else {
+        console.warn('Auto-save failed');
+      }
+    } catch (error) {
+      console.error('Auto-save error:', error);
+    }
   }
 }));

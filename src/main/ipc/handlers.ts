@@ -217,4 +217,83 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
       };
     }
   });
+
+  // Recording handlers
+  ipcMain.handle('get-recording-sources', async () => {
+    try {
+      const { desktopCapturer } = require('electron');
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window']
+      });
+      
+      const recordingSources = sources.map((source: any) => ({
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail.toDataURL(),
+        type: source.id.startsWith('screen') ? 'screen' : 'window'
+      }));
+      
+      return { success: true, sources: recordingSources };
+    } catch (error) {
+      console.error('Get recording sources error:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to get recording sources' 
+      };
+    }
+  });
+
+  ipcMain.handle('start-recording', async (_, { videoSourceId, audioEnabled, resolution, frameRate }: {
+    videoSourceId: string;
+    audioEnabled: boolean;
+    resolution: { width: number; height: number };
+    frameRate: number;
+  }) => {
+    try {
+      const { desktopCapturer } = require('electron');
+      
+      // Get the video source
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window']
+      });
+      const source = sources.find((s: any) => s.id === videoSourceId);
+      
+      if (!source) {
+        throw new Error('Video source not found');
+      }
+      
+      // Create constraints for getUserMedia
+      const constraints: any = {
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: source.id,
+            minWidth: resolution.width,
+            maxWidth: resolution.width,
+            minHeight: resolution.height,
+            maxHeight: resolution.height,
+            minFrameRate: frameRate,
+            maxFrameRate: frameRate
+          }
+        }
+      };
+      
+      if (audioEnabled) {
+        constraints.audio = {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: source.id
+          }
+        };
+      }
+      
+      return { success: true, constraints };
+    } catch (error) {
+      console.error('Start recording error:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to start recording' 
+      };
+    }
+  });
 };

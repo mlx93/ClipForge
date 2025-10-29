@@ -53,6 +53,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showOpenDialog: (options: any): Promise<{ canceled: boolean; filePaths?: string[] }> => 
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_OPEN_DIALOG, options),
 
+  // Recording operations
+  getRecordingSources: (): Promise<{ success: boolean; sources?: any[]; error?: string }> => 
+    ipcRenderer.invoke(IPC_CHANNELS.GET_RECORDING_SOURCES),
+
+  startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }): Promise<{ success: boolean; constraints?: any; error?: string }> => 
+    ipcRenderer.invoke(IPC_CHANNELS.START_RECORDING, params),
+
   // Listen for events from main process
   onImportVideos: (callback: (filePaths: string[]) => void) => 
     ipcRenderer.on('import-videos', (_, filePaths) => callback(filePaths)),

@@ -1,7 +1,7 @@
 // Application constants
 
 export const APP_NAME = 'ClipForge';
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.2.0';
 
 // Window dimensions
 export const WINDOW_WIDTH = 1280;
@@ -52,7 +52,11 @@ export const IPC_CHANNELS = {
   LOAD_PROJECT: 'load-project',
   SHOW_SAVE_DIALOG: 'show-save-dialog',
   SHOW_OPEN_DIALOG: 'show-open-dialog',
-  NEW_PROJECT: 'new-project'
+  NEW_PROJECT: 'new-project',
+  // Recording channels
+  GET_RECORDING_SOURCES: 'get-recording-sources',
+  START_RECORDING: 'start-recording',
+  STOP_RECORDING: 'stop-recording'
 } as const;
 
 // Error messages

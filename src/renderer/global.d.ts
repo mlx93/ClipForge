@@ -39,6 +39,10 @@ declare global {
       showSaveDialog: (options: any) => Promise<{ canceled: boolean; filePath?: string }>;
       showOpenDialog: (options: any) => Promise<{ canceled: boolean; filePaths?: string[] }>;
 
+      // Recording operations
+      getRecordingSources: () => Promise<{ success: boolean; sources?: any[]; error?: string }>;
+      startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }) => Promise<{ success: boolean; constraints?: any; error?: string }>;
+
       // Listen for events from main process
       onImportVideos: (callback: (filePaths: string[]) => void) => void;
       onTriggerExport: (callback: () => void) => void;
