@@ -56,16 +56,292 @@ All 6 items from POST_PRD1_POLISH_SPEC.md Phase 1.5 completed:
 - Faster imports with dev tools open (15-30% improvement expected)
 - Files cleaned: fileSystem.ts, ipc/handlers.ts, App.tsx, MediaLibrary.tsx
 
-### Phase 2 Status: READY TO START ⏳
-All prerequisites complete. Phase 2 tasks:
-1. Fix Timeline Zoom Implementation (2-3 hours) - HIGH RISK
-2. Generate Thumbnail Previews (1-1.5 hours) - MEDIUM RISK
-3. Trim Handle Visual Improvements (1 hour) - HIGH RISK
-4. Visual Trim Indicators (1-1.5 hours) - MEDIUM RISK
-5. Media Library Two-Button System (30 min) - MEDIUM RISK
+### Implementation Roadmap - Current Status
 
-**Total Phase 2 Estimate**: 6-7 hours
-**Detailed specs in**: POST_PRD1_POLISH_SPEC.md with protective implementation notes
+### 📍 Current Phase: Phase 1.75 - Critical Trim Fixes (NEXT) ⏳
+**Document**: Post_PRD1_spec_middle.md (270 lines)
+**Status**: Ready to implement
+**Estimated Time**: 2 hours 10 minutes
+
+**Priority 1 (Blocking Issues - 55 min)**:
+1. Issue #1 & #2: Timestamp/Total Duration Not Updating (15 min, Low risk)
+   - Fix: `updateClip` action in timelineStore.ts must recalculate totalDuration atomically
+   - Problem: Race condition where VideoPreview reads stale duration after trim
+2. Issue #3: Ghost Playback Beyond Trim (30 min, Medium risk)
+   - Fix: Explicitly pause video element at end of last clip in RAF loop
+   - Problem: Video keeps playing beyond timeline end (31s, 32s, 33s...)
+3. Issue #4: Playhead Jump After Trim (10 min, Low risk)
+   - Fix: Adjust playhead if beyond new totalDuration after trim
+   - Problem: Spacebar causes unexpected jump when playhead > totalDuration
+
+**Priority 2 (UX Enhancements - 75 min)**:
+4. Issue #5: No Pause at Trim Borders (45 min, Medium risk)
+   - Fix: Add trimPreview state, RAF loop checks clip.currentTime >= trimPreview.end
+   - Feature: Click trim handle → seek to trim point, play → auto-pause at trim end
+5. Issue #8: Trim Precision (30 min, Low risk)
+   - Fix: Snap trim handles to 0.1s intervals, update formatTime to show tenths
+   - Feature: "MM:SS.d" format (e.g., "1:05.3"), visual flash on snap
+
+**Why Phase 1.75 is Critical**:
+- Demo recording revealed these issues break core trim functionality
+- Must fix before moving to Phase 2 UI polish
+- All issues have clear root causes and safe fix strategies
+- No risk to existing functionality (additive fixes)
+
+**Testing Strategy**: 5 comprehensive scenarios covering basic trim, playhead adjustment, preview pause, precision snapping, and edge cases
+
+### Phase 2 Status: READY AFTER 1.75 ⏳
+**Document**: POST_PRD1_POLISH_SPEC.md (Phase 2: Lines 173-510)
+**Status**: Waiting for Phase 1.75 completion
+**Estimated Time**: 6-7 hours
+**Risk Level**: HIGH/MEDIUM - UI changes with protective implementation notes
+
+Phase 2 tasks:
+1. Fix Timeline Zoom Implementation (2-3 hours) - HIGH RISK ⚠️
+   - Pre-implementation analysis complete (lines 182-232)
+   - Zoom IS implemented but formulas inconsistent
+   - Critical safety rules: DO NOT touch trim handle logic, dependency array, or isDraggingRef
+2. Generate Thumbnail Previews (1-1.5 hours) - MEDIUM RISK
+   - FFmpeg generateThumbnail exists, thumbnailPath field exists
+   - Need IPC handler, auto-generate during import, UI already has container
+3. Trim Handle Visual Improvements (1 hour) - HIGH RISK ⚠️
+   - Current: 8px x 60px red rectangles
+   - Safe changes: width → 12px, height → 70px, hover glow
+   - CANNOT change: position calc, event handlers, properties
+4. Visual Trim Indicators (1-1.5 hours) - MEDIUM RISK
+   - Two-layer overlay: gray (trimmed) + blue (active)
+   - Use fabric.Group for 3-part rendering
+   - Must ensure trimmed regions don't play
+5. Media Library Two-Button System (30 min) - MEDIUM RISK
+   - Add trash icon for library removal + cascade delete
+   - Keep existing + and X buttons unchanged
+
+### Phase 3 Status: PLANNED
+**Document**: POST_PRD1_POLISH_SPEC.md (Phase 3: Lines 513-543)
+**Estimated Time**: 3-4 hours
+**Risk Level**: LOW - Pure additions
+
+Phase 3 tasks:
+1. Keyboard Shortcuts for Zoom (15 min)
+2. Show Clip Count Prominently (10 min)
+3. Video Preview on Media Library Hover (45 min)
+4. Estimated Time Remaining for Exports (30 min)
+5. Clip Selection Keyboard Shortcuts (20 min)
+6. Code Cleanup (1 hour) - Remove console.logs, extract constants
+
+### PRD-2 Features: FUTURE (POST-MVP)
+**Document**: PRD-2-Full-Features.md (986 lines)
+**Status**: After Phase 1.75, 2, 3 complete
+**Estimated Time**: 18-22 hours
+
+**Phase 1 (Critical for Full Submission - 10 hours)**:
+1. Recording features (screen + webcam + audio via desktopCapturer)
+2. Multi-track timeline with picture-in-picture
+3. Enhanced export options (platform presets, cloud sharing)
+
+**Phase 2 (Polish & UX - 4 hours)**:
+4. Undo/redo functionality (history store)
+5. Keyboard shortcuts (30+ shortcuts with hotkeys-js)
+6. Auto-save on force quit (electron-store)
+
+**Phase 3 (Enhancement - 4-8 hours)**:
+7. Transitions between clips (xfade filter)
+8. Text overlays (drawtext filter)
+
+**Implementation Order**:
+1. ✅ Phase 1 (Complete) - MVP Foundation
+2. ✅ Phase 1.5 (Complete) - Critical Bug Fixes
+3. ⏳ Phase 1.75 (NEXT) - Critical Trim Fixes
+4. 📋 Phase 2 - UI Polish (high-risk items)
+5. 📋 Phase 3 - Nice-to-haves (low-risk)
+6. 📋 PRD-2 Phase 1 - Recording & Multi-track
+7. 📋 PRD-2 Phase 2 - Undo/Redo & Shortcuts
+8. 📋 PRD-2 Phase 3 - Transitions & Text
+
+## 🏗️ Major Architecture Deviations from PRD-1
+
+**Purpose**: Document how current implementation differs from original PRD-1-MVP-Foundation.md and cf1_architecture.md to inform PRD-2 and cf2_architecture.md revisions.
+
+### Critical Architectural Changes
+
+#### 1. VideoPreview Component - Complete Refactor (512 lines)
+**Original Design** (cf1_architecture.md):
+- Simple HTML5 video element with play/pause controls
+- Basic sync: `video.currentTime` synced with timeline playhead
+- Single clip playback
+
+**Current Implementation** (After Commit 024d323 + 856f21f):
+- **Global Time System**: Continuous timeline across multiple clips
+  - Calculates each clip's global start time (sum of previous clip durations)
+  - Displays timeline time (not individual clip time)
+  - Video player shows 0:00-3:00 across 3 clips, NOT 0:00-1:00 per clip
+- **RAF-Based Playback Loop**: 60fps requestAnimationFrame for smooth updates
+  - Replaces original setInterval approach
+  - Continuous loop even during clip transitions
+  - Manual clip boundary detection (doesn't rely on video.onEnded)
+- **Pending Play Pattern**: 
+  - `videoReadyStateRef` tracks: loading/canplay/error
+  - `pendingPlayRef` queues play requests during video load
+  - Resolves race conditions with video.load() + play()
+- **Stable References**: 
+  - `currentClipInfoRef` prevents RAF loop restarts
+  - `useMemo` for `currentClipName` prevents VideoControls re-renders
+  - RAF dependencies: `[isPlaying]` only (was `[isPlaying, currentClip, currentClipInfo]`)
+- **Seamless Transitions**: 
+  - Immediate seek on metadata load reduces flicker from 100ms → <16ms
+  - Video loads once per clip (was loading twice)
+  - Footer stays mounted during transitions (no layout thrash)
+
+**Impact**: This is a MAJOR deviation from PRD-1. Original design was single-clip focused, current design is timeline-centric with multi-clip orchestration.
+
+**Files**:
+- src/renderer/components/VideoPreview.tsx (512 lines - was ~150 lines in PRD-1 spec)
+- src/renderer/global.d.ts (68 lines - new type definitions for window.electronAPI)
+
+#### 2. Timeline Component - Advanced State Management (976 lines)
+**Original Design** (PRD-1):
+- Basic Fabric.js canvas rendering clips as rectangles
+- Simple click-to-seek
+- Basic trim handles
+
+**Current Implementation** (After multiple fixes):
+- **Trim Handle System**:
+  - Complex drag state management with `isDraggingRef`
+  - Prevents canvas re-renders during drag (lines 286-290, 408-559)
+  - Stale closure fixes: all event handlers use `getState()` fresh values
+  - Trim value persistence: checks `wasAlreadySelected` before resetting
+  - Video pause/resume integration during trim operations
+- **Zoom Implementation**:
+  - Viewport transform approach: `setViewportTransform([zoom, 0, 0, 1, 0, 0])`
+  - Text zoom independence: inverse transform `zoomX: 1/zoom, zoomY: 1/zoom`
+  - Coordinate calculations account for zoom in all interactions
+  - `isDraggingRef` skip logic prevents zoom disruption during drag
+- **Toast Notifications**:
+  - Replaced blocking `alert()` with react-hot-toast
+  - Non-blocking UX for trim success/failure
+- **Automatic File Cleanup**:
+  - Tracks `previousTrimPath` in clip metadata
+  - Deletes old trim files when applying new trim
+  - Prevents disk space bloat
+
+**Impact**: Timeline is now a complex state machine managing drag states, zoom transforms, and trim workflows. Much more sophisticated than PRD-1 simple timeline spec.
+
+**Files**:
+- src/renderer/components/Timeline.tsx (976 lines - was ~400 lines estimated in PRD-1)
+- src/renderer/store/timelineStore.ts (189 lines - has trimClip, splitClip not in PRD-1)
+
+#### 3. Export System - Critical Implementation Patterns
+**Original Design** (PRD-1):
+- fluent-ffmpeg for video encoding
+- Basic progress tracking
+- Simple MP4 export
+
+**Current Implementation** (After Commit 05ea803 + f1e13ec):
+- **Module Import Pattern (CRITICAL)**:
+  - MUST use `const ffmpeg = require('fluent-ffmpeg')` (not ESM import)
+  - Reason: Vite's `_interopNamespaceDefault` breaks fluent-ffmpeg callable function
+  - Documented in systemPatterns.md as DO NOT MODIFY
+- **Filter Chain Architecture**:
+  - Multiple clips: Use complexFilter for BOTH concat and scale
+  - Single clip: Can use videoFilters for scaling
+  - FFmpeg doesn't allow mixing -vf and -filter_complex flags
+- **Manual Progress Calculation**:
+  - Parse FFmpeg's timemark (HH:MM:SS.ms format)
+  - Calculate `(elapsed / totalDuration) * 100`
+  - FFmpeg's `progress.percent` unreliable with complex filters
+- **MOV Format Support**:
+  - Detects output format from file extension
+  - Sets FFmpeg `.format()` accordingly
+  - Default: MP4, Optional: MOV (for macOS users)
+
+**Impact**: Export system has critical implementation requirements not in PRD-1. These patterns are necessary for proper functioning and must be preserved.
+
+**Files**:
+- src/main/ffmpeg.ts (197 lines - critical patterns documented)
+- src/main/fileSystem.ts (also uses require pattern)
+- FFMPEG_EXPORT_FIX.md (comprehensive technical analysis)
+
+#### 4. Project Management - .clipforge File Format
+**Original Design** (PRD-1 Section 5.4):
+- Lower priority feature
+- Basic JSON save/load
+- "Implement after import/timeline/export solidified"
+
+**Current Implementation** (Phase 1.5):
+- **Fully Implemented**: Save/Load working with .clipforge files
+- **Dirty State Tracking**: 
+  - `isDirty` flag in projectStore
+  - `initialLoadRef` prevents marking dirty on initial load
+  - Reordered `loadProject` to set isDirty: false before timeline update
+- **State Serialization**:
+  - Clips array with file paths, trim values, durations
+  - Timeline arrangement and playhead position
+  - Project settings
+- **User Experience**:
+  - Save/Save As buttons in header
+  - .clipforge files must be opened via File → Open (not macOS double-click)
+  - README documentation for file type
+
+**Impact**: Project management became a Phase 1.5 priority (not "lower priority" as in PRD-1) due to user workflow needs.
+
+**Files**:
+- src/renderer/store/projectStore.ts (fully implemented)
+- src/renderer/components/ProjectMenu.tsx (Save/Save As/Open dialogs)
+- README.md (Project Files section)
+
+### 5. IPC Architecture - Expanded API Surface
+**Original Design** (PRD-1 Section 3.3):
+- `import-videos`, `export-timeline`, `export-progress`
+- Basic preload script
+
+**Current Implementation**:
+- **Additional Handlers**:
+  - `save-project`, `load-project`, `open-project-dialog`
+  - `delete-file` (for trim file cleanup)
+  - `trim-video`, `trim-progress` (separate from export)
+  - `generate-thumbnail` (planned for Phase 2)
+- **Type Safety**: 
+  - src/renderer/global.d.ts defines full window.electronAPI interface
+  - All IPC calls type-checked at compile time
+- **Error Handling**:
+  - Disk full detection (ENOSPC)
+  - File path sanitization
+  - Invalid trim value validation
+
+**Impact**: IPC layer is more comprehensive than PRD-1 spec suggested, with explicit type definitions and robust error handling.
+
+**Files**:
+- src/preload/preload.ts (expanded API)
+- src/renderer/global.d.ts (68 lines of type definitions)
+- src/main/ipc/handlers.ts (all handler implementations)
+
+### Summary: How Far We've Strayed
+
+**High-Level Assessment**:
+1. **VideoPreview**: 🔴 **MAJOR** deviation - Completely different architecture (single-clip → multi-clip orchestration)
+2. **Timeline**: 🟡 **MODERATE** deviation - Same Fabric.js base but much more complex state management
+3. **Export**: 🟡 **MODERATE** deviation - Same FFmpeg approach but critical implementation patterns not in PRD-1
+4. **Project Management**: 🟢 **MINOR** deviation - Feature prioritization changed but implementation straightforward
+5. **IPC Layer**: 🟢 **MINOR** deviation - More handlers than PRD-1 but same architectural approach
+
+**Why These Deviations Occurred**:
+- **Multi-Clip Playback**: PRD-1 underestimated complexity of seamless multi-clip transitions
+- **Trim Workflow**: PRD-1 didn't anticipate drag state management complexity
+- **Vite + FFmpeg**: ESM/CommonJS interop issues not foreseen in PRD-1
+- **Performance**: RAF loop, useMemo, React.memo patterns needed for 60fps
+
+**Impact on PRD-2 Planning**:
+- **Multi-Track Timeline**: Current VideoPreview already orchestrates clips; multi-track is an extension
+- **Recording**: Can integrate with existing clip management system
+- **Undo/Redo**: Must account for complex trim state, not just simple clip additions
+- **Zoom**: Already implemented but needs fixes (Phase 2 task)
+
+**Files to Review for PRD-2**:
+- cf2_architecture.md must reflect current VideoPreview RAF loop pattern
+- PRD-2 multi-track design must build on current clip boundary detection
+- Recording features should auto-import to media library (current IPC pattern)
+
+---
 
 ## Recent Changes (Last 10 Commits)
 
