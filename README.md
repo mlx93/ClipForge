@@ -6,14 +6,17 @@ A production-grade desktop video editor for macOS built with Electron, React, an
 
 ### ✅ Core Video Editing
 - **Import Videos**: Drag & drop or file picker for MP4, MOV, AVI, MKV, WebM
-- **Timeline Editor**: Fabric.js-based timeline with visual clips and playhead
+- **Timeline Editor**: Fabric.js-based timeline with visual clips, playhead, and zoom
 - **Video Preview**: HTML5 video player synced with timeline
-- **Trim & Split**: Visual trim handles and split functionality
-- **Export**: FFmpeg-based multi-clip export with progress tracking
+- **Trim & Split**: Visual trim handles with precision snapping and split functionality
+- **Export**: FFmpeg-based multi-clip export with real-time progress tracking
 
 ### ✅ User Experience
 - **Native macOS App**: Electron-based with native file dialogs
-- **Keyboard Shortcuts**: Space (play/pause), Arrow keys (seek), S (split)
+- **Keyboard Shortcuts**: Space (play/pause), Arrow keys (seek), S (split), Cmd+Plus/Minus (zoom), Tab (clip selection)
+- **Thumbnail Previews**: Auto-generated video thumbnails in media library
+- **Hover Previews**: Video frame previews on media library hover
+- **Export Time Estimates**: Real-time progress with time remaining calculations
 - **Responsive UI**: Tailwind CSS with dark theme
 - **Memory Efficient**: Stream-based processing, file path storage
 
@@ -35,8 +38,8 @@ npm run dev
 ### Production (macOS)
 
 Download the latest release from [GitHub Releases](https://github.com/mlx93/ClipForge/releases):
-- `ClipForge-1.0.0.dmg` - Intel Mac
-- `ClipForge-1.0.0-arm64.dmg` - Apple Silicon Mac
+- `ClipForge-1.1.0.dmg` - Intel Mac
+- `ClipForge-1.1.0-arm64.dmg` - Apple Silicon Mac
 
 #### First-Time Installation on macOS
 
@@ -254,20 +257,22 @@ MIT License - see LICENSE file for details.
 
 ## Roadmap
 
-### ✅ MVP Complete (v1.0.0)
+### ✅ MVP Complete (v1.1.0)
 - ✅ Video import (drag & drop, file picker)
-- ✅ Timeline editing with Fabric.js
-- ✅ Trim and split functionality
+- ✅ Timeline editing with Fabric.js and zoom
+- ✅ Trim and split functionality with precision snapping
 - ✅ Multi-clip export with FFmpeg
 - ✅ Project save/load (.clipforge files)
+- ✅ Thumbnail generation for media library
+- ✅ Keyboard shortcuts and navigation
+- ✅ Video hover previews
+- ✅ Export time estimation
 - ✅ Native macOS packaging (DMG)
 
 ### 🚀 Planned Features (Post-MVP)
-- [ ] **Phase 2 Polish**:
-  - [ ] Real thumbnail generation (FFmpeg-based)
-  - [ ] Visual trim indicators (show trimmed regions)
-  - [ ] Enhanced timeline zoom
-  - [ ] Media library improvements
+- [ ] **Visual Trim Indicators**:
+  - [ ] Gray overlay for trimmed regions
+  - [ ] Visual feedback for trim boundaries
 
 - [ ] **PRD-2 Features**:
   - [ ] Screen recording (desktopCapturer API)
@@ -285,4 +290,4 @@ See [PRD-2-Full-Features.md](./PRD-2-Full-Features.md) and [PRD-3-AI-Captions.md
 
 ---
 
-**ClipForge v1.0.0** - Built with ❤️ for content creators
+**ClipForge v1.1.0** - Built with ❤️ for content creators

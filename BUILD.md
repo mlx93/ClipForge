@@ -1,7 +1,7 @@
 # ClipForge - Build and Deployment Guide
 
-**Version:** 1.0.0  
-**Last Updated:** October 28, 2025
+**Version:** 1.1.0  
+**Last Updated:** December 19, 2024
 
 ---
 
@@ -155,9 +155,9 @@ npm run dist:mac
 ```
 
 **Outputs** (in `release/` folder):
-- `ClipForge-1.0.0.dmg` - Intel Mac (x64)
-- `ClipForge-1.0.0-arm64.dmg` - Apple Silicon Mac (arm64)
-- `ClipForge-1.0.0.dmg.blockmap` - Delta update files
+- `ClipForge-1.1.0.dmg` - Intel Mac (x64)
+- `ClipForge-1.1.0-arm64.dmg` - Apple Silicon Mac (arm64)
+- `ClipForge-1.1.0.dmg.blockmap` - Delta update files
 - `latest-mac.yml` - Auto-update metadata
 
 **Universal Binary** (both architectures in one file):
@@ -172,7 +172,7 @@ npm run dist:win
 ```
 
 **Outputs** (in `release/` folder):
-- `ClipForge Setup 1.0.0.exe` - Windows installer
+- `ClipForge Setup 1.1.0.exe` - Windows installer
 - `latest.yml` - Auto-update metadata
 
 **Note**: Cross-platform builds work but may require Wine for code signing.
@@ -194,9 +194,9 @@ Builds for all configured platforms (macOS, Windows).
 After running `npm run dist:mac`, upload these files:
 
 1. **For Users**:
-   - `ClipForge-1.0.0.dmg` (Intel Mac)
-   - `ClipForge-1.0.0-arm64.dmg` (Apple Silicon Mac)
-   - `ClipForge Setup 1.0.0.exe` (Windows)
+   - `ClipForge-1.1.0.dmg` (Intel Mac)
+   - `ClipForge-1.1.0-arm64.dmg` (Apple Silicon Mac)
+   - `ClipForge Setup 1.1.0.exe` (Windows)
 
 2. **For Auto-Updates** (optional):
    - `latest-mac.yml`
@@ -205,7 +205,7 @@ After running `npm run dist:mac`, upload these files:
 
 ### File Sizes (Approximate)
 
-- macOS DMG: ~150-200MB (includes Electron + FFmpeg)
+- macOS DMG: ~112-116MB (includes Electron + FFmpeg)
 - Windows EXE: ~170-220MB
 
 ---
@@ -220,32 +220,36 @@ After running `npm run dist:mac`, upload these files:
 
 ### 2. Release Configuration
 
-**Tag version**: `v1.0.0`  
-**Release title**: `ClipForge v1.0.0 - MVP Release`  
+**Tag version**: `v1.1.0`  
+**Release title**: `ClipForge v1.1.0 - Complete MVP with Polish Features`  
 **Description**:
 
 ```markdown
-# ClipForge v1.0.0 - MVP Release
+# ClipForge v1.1.0 - Complete MVP with Polish Features
 
 Desktop video editor built with Electron, React, and TypeScript.
 
 ## 🎉 Features
 
 - ✅ Import MP4, MOV, AVI, MKV, WebM files
-- ✅ Timeline editing with visual clips
-- ✅ Trim and split functionality
+- ✅ Timeline editing with visual clips and zoom
+- ✅ Trim and split functionality with precision snapping
 - ✅ Multi-clip export with FFmpeg
 - ✅ Project save/load (.clipforge files)
+- ✅ Thumbnail generation for media library
+- ✅ Keyboard shortcuts (zoom, navigation, editing)
+- ✅ Video preview on media library hover
+- ✅ Export time estimation
 - ✅ Native macOS packaging
 
 ## 📥 Downloads
 
 ### macOS
-- **Apple Silicon (M1/M2/M3)**: Download `ClipForge-1.0.0-arm64.dmg`
-- **Intel Mac**: Download `ClipForge-1.0.0.dmg`
+- **Apple Silicon (M1/M2/M3)**: Download `ClipForge-1.1.0-arm64.dmg`
+- **Intel Mac**: Download `ClipForge-1.1.0.dmg`
 
 ### Windows
-- Download `ClipForge Setup 1.0.0.exe`
+- Download `ClipForge Setup 1.1.0.exe`
 
 ## 🔧 Installation
 
@@ -274,8 +278,8 @@ See [README.md](https://github.com/YOUR_USERNAME/ClipForge#first-time-installati
 
 ## 🐛 Known Issues
 
-- Timeline zoom has minor coordinate inconsistencies at extreme zoom levels
-- Thumbnail previews show placeholders (real thumbnails coming in Phase 2)
+- Minor video flicker during clip transitions (<16ms, acceptable for MVP)
+- Visual trim indicators (gray overlay) not yet implemented
 
 ## 🙏 Feedback
 
@@ -285,9 +289,9 @@ Found a bug? [Open an issue](https://github.com/YOUR_USERNAME/ClipForge/issues/n
 ### 3. Upload Build Artifacts
 
 Drag and drop these files from `release/` folder:
-- `ClipForge-1.0.0.dmg`
-- `ClipForge-1.0.0-arm64.dmg`
-- `ClipForge Setup 1.0.0.exe` (if built)
+- `ClipForge-1.1.0.dmg`
+- `ClipForge-1.1.0-arm64.dmg`
+- `ClipForge Setup 1.1.0.exe` (if built)
 
 ### 4. Publish Release
 
