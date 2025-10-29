@@ -33,6 +33,11 @@
 - **eslint**: ^9.18.0
 - **electron-builder**: ^25.1.8
 
+### PRD-2 Dependencies (NEW)
+- **electron-store**: ^8.1.0 (persistent app state for auto-save)
+- **hotkeys-js**: ^3.12.0 (keyboard shortcuts management)
+- **react-hot-toast**: ^2.4.1 (toast notifications)
+
 ## Build Configuration
 
 ### Vite Configs
@@ -93,6 +98,9 @@ src/
 - `save-project`: Save project file
 - `load-project`: Load project file
 - `show-save-dialog`: Native save dialog
+- `get-recording-sources`: List screen/window sources (NEW)
+- `start-recording`: Start screen/webcam recording (NEW)
+- `stop-recording`: Stop recording and save file (NEW)
 
 ## Configuration Files
 - **tsconfig.json**: Root TypeScript config

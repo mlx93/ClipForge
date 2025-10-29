@@ -51,12 +51,17 @@ ClipForge follows Electron's multi-process architecture with clear separation be
 - **Timeline Store**: Clips, playhead, selection, zoom
 - **Export Store**: Progress, status, settings
 - **Media Library Store**: Imported clips list
+- **Recording Store**: Recording state, sources, settings (NEW)
+- **History Store**: Undo/redo with command pattern (NEW)
+- **Shortcuts Store**: Keyboard shortcut management (NEW)
+- **Session Store**: Auto-save and session recovery (NEW)
 - Pattern: Centralized state with actions
 
 ### 2. IPC Communication
 - **Preload Script**: Secure API bridge (`window.electron`)
-- **Main Process**: Handles file system, FFmpeg operations
+- **Main Process**: Handles file system, FFmpeg operations, recording
 - **Renderer**: Calls IPC methods for async operations
+- **Recording Channels**: get-recording-sources, start-recording, stop-recording (NEW)
 - Pattern: Request/response with typed channels
 
 ### 3. Component Architecture
@@ -66,7 +71,12 @@ App (Root)
 ├── MediaLibrary (clip list)
 ├── VideoPreview (HTML5 player)
 ├── Timeline (Fabric.js canvas)
-└── ExportDialog (modal)
+├── ExportDialog (modal)
+├── RecordingPanel (screen/webcam recording) (NEW)
+├── HistoryControls (undo/redo buttons) (NEW)
+├── ShortcutsModal (help reference) (NEW)
+├── SessionRecoveryDialog (crash recovery) (NEW)
+└── CloudExport (sharing interface) (NEW)
 ```
 
 ### 4. Timeline Canvas Pattern
@@ -164,6 +174,43 @@ This export logic is essential for app functionality. DO NOT modify without unde
 4. User edits timeline → Store updates
 5. User exports → Main process runs FFmpeg
 6. Progress updates → Renderer via IPC events
+
+## PRD-2 Patterns (NEW)
+
+### 1. Recording System Pattern
+- **DesktopCapturer API**: Main process lists screen/window sources
+- **getUserMedia**: Renderer process captures media streams
+- **MediaRecorder API**: Records combined streams to WebM
+- **Auto-Import**: Recorded clips automatically added to media library
+- Pattern: Main process enumeration → Renderer capture → Auto-import
+
+### 2. Undo/Redo Pattern (Command Pattern)
+- **State Snapshots**: Store complete state before each action
+- **History Stack**: Past (undo), Present (current), Future (redo)
+- **Action Wrapping**: Wrap timeline actions to push state to history
+- **Memory Management**: 50-action limit with state diffs
+- Pattern: Before action → Push state → Execute action → Update present
+
+### 3. Keyboard Shortcuts Pattern
+- **Global Listener**: Single keydown listener in App component
+- **Data-Action Attributes**: Buttons marked with data-action for programmatic triggering
+- **Store Registration**: Shortcuts registered in shortcutsStore
+- **Modal Integration**: F1 help modal with categorized shortcuts
+- Pattern: Global listener → Store lookup → Action execution
+
+### 4. Auto-Save Pattern
+- **Timer-Based**: setInterval triggers every 2 minutes
+- **Session Persistence**: localStorage for crash recovery
+- **State Integration**: Auto-save triggers on project changes
+- **Recovery Dialog**: Startup check for session data
+- Pattern: Timer → Check dirty state → Save → Store session
+
+### 5. Cloud Export Pattern
+- **Post-Export Integration**: Triggered after successful local export
+- **Multi-Platform**: Support for multiple sharing services
+- **Progress Tracking**: Upload progress with user feedback
+- **Link Generation**: Shareable links with clipboard integration
+- Pattern: Export complete → Show cloud options → Upload → Generate link
 
 ## Known Patterns
 - **Canvas Re-rendering**: Only when clips/selection changes, not playhead
