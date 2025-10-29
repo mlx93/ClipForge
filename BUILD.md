@@ -1,6 +1,6 @@
-# ClipForge - Build and Deployment Guide
+# SimpleCut - Build and Deployment Guide
 
-**Version:** 1.1.0  
+**Version:** 2.0.0  
 **Last Updated:** December 19, 2024
 
 ---
@@ -49,7 +49,7 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ClipForge.git
+git clone https://github.com/mlx93/ClipForge.git
 cd ClipForge
 ```
 
@@ -155,9 +155,9 @@ npm run dist:mac
 ```
 
 **Outputs** (in `release/` folder):
-- `ClipForge-1.1.0.dmg` - Intel Mac (x64)
-- `ClipForge-1.1.0-arm64.dmg` - Apple Silicon Mac (arm64)
-- `ClipForge-1.1.0.dmg.blockmap` - Delta update files
+- `SimpleCut-2.0.0.dmg` - Intel Mac (x64)
+- `SimpleCut-2.0.0-arm64.dmg` - Apple Silicon Mac (arm64)
+- `SimpleCut-2.0.0.dmg.blockmap` - Delta update files
 - `latest-mac.yml` - Auto-update metadata
 
 **Universal Binary** (both architectures in one file):
@@ -172,7 +172,7 @@ npm run dist:win
 ```
 
 **Outputs** (in `release/` folder):
-- `ClipForge Setup 1.1.0.exe` - Windows installer
+- `SimpleCut Setup 2.0.0.exe` - Windows installer
 - `latest.yml` - Auto-update metadata
 
 **Note**: Cross-platform builds work but may require Wine for code signing.
@@ -194,9 +194,9 @@ Builds for all configured platforms (macOS, Windows).
 After running `npm run dist:mac`, upload these files:
 
 1. **For Users**:
-   - `ClipForge-1.1.0.dmg` (Intel Mac)
-   - `ClipForge-1.1.0-arm64.dmg` (Apple Silicon Mac)
-   - `ClipForge Setup 1.1.0.exe` (Windows)
+   - `SimpleCut-2.0.0.dmg` (Intel Mac)
+   - `SimpleCut-2.0.0-arm64.dmg` (Apple Silicon Mac)
+   - `SimpleCut Setup 2.0.0.exe` (Windows)
 
 2. **For Auto-Updates** (optional):
    - `latest-mac.yml`
@@ -205,8 +205,10 @@ After running `npm run dist:mac`, upload these files:
 
 ### File Sizes (Approximate)
 
-- macOS DMG: ~112-116MB (includes Electron + FFmpeg)
+- macOS DMG: ~112-120MB (includes Electron + FFmpeg)
 - Windows EXE: ~170-220MB
+
+**Note**: SimpleCut v2.0.0 includes additional features (metadata display, crash recovery) but maintains similar bundle size.
 
 ---
 
@@ -220,12 +222,12 @@ After running `npm run dist:mac`, upload these files:
 
 ### 2. Release Configuration
 
-**Tag version**: `v1.1.0`  
-**Release title**: `ClipForge v1.1.0 - Complete MVP with Polish Features`  
+**Tag version**: `v2.0.0`  
+**Release title**: `SimpleCut v2.0.0 - Complete MVP with Metadata & Crash Recovery`  
 **Description**:
 
 ```markdown
-# ClipForge v1.1.0 - Complete MVP with Polish Features
+# SimpleCut v2.0.0 - Complete MVP with Metadata & Crash Recovery
 
 Desktop video editor built with Electron, React, and TypeScript.
 
@@ -235,8 +237,13 @@ Desktop video editor built with Electron, React, and TypeScript.
 - ✅ Timeline editing with visual clips and zoom
 - ✅ Trim and split functionality with precision snapping
 - ✅ Multi-clip export with FFmpeg
-- ✅ Project save/load (.clipforge files)
+- ✅ Project save/load (.simplecut files)
 - ✅ Thumbnail generation for media library
+- ✅ Media library metadata display (duration, resolution, file size, codec, frame rate)
+- ✅ Crash recovery (automatic session recovery after unexpected shutdowns)
+- ✅ Screen recording (screen + webcam + audio)
+- ✅ Undo/redo functionality (50-action history)
+- ✅ Auto-save on force quit
 - ✅ Keyboard shortcuts (zoom, navigation, editing)
 - ✅ Video preview on media library hover
 - ✅ Export time estimation
@@ -245,24 +252,24 @@ Desktop video editor built with Electron, React, and TypeScript.
 ## 📥 Downloads
 
 ### macOS
-- **Apple Silicon (M1/M2/M3)**: Download `ClipForge-1.1.0-arm64.dmg`
-- **Intel Mac**: Download `ClipForge-1.1.0.dmg`
+- **Apple Silicon (M1/M2/M3)**: Download `SimpleCut-2.0.0-arm64.dmg`
+- **Intel Mac**: Download `SimpleCut-2.0.0.dmg`
 
 ### Windows
-- Download `ClipForge Setup 1.1.0.exe`
+- Download `SimpleCut Setup 2.0.0.exe`
 
 ## 🔧 Installation
 
 ### macOS Users
 
-**Important**: ClipForge is not code-signed. macOS will show a security warning on first launch.
+**Important**: SimpleCut is not code-signed. macOS will show a security warning on first launch.
 
 1. Download the appropriate DMG file
-2. Mount the DMG and drag ClipForge to Applications
-3. Right-click ClipForge.app → "Open" → "Open" (bypasses Gatekeeper)
+2. Mount the DMG and drag SimpleCut to Applications
+3. Right-click SimpleCut.app → "Open" → "Open" (bypasses Gatekeeper)
 4. Or: System Preferences → Security & Privacy → "Open Anyway"
 
-See [README.md](https://github.com/YOUR_USERNAME/ClipForge#first-time-installation-on-macos) for detailed instructions.
+See [README.md](https://github.com/mlx93/ClipForge#first-time-installation-on-macos) for detailed instructions.
 
 ### Windows Users
 
@@ -289,9 +296,9 @@ Found a bug? [Open an issue](https://github.com/YOUR_USERNAME/ClipForge/issues/n
 ### 3. Upload Build Artifacts
 
 Drag and drop these files from `release/` folder:
-- `ClipForge-1.1.0.dmg`
-- `ClipForge-1.1.0-arm64.dmg`
-- `ClipForge Setup 1.1.0.exe` (if built)
+- `SimpleCut-2.0.0.dmg`
+- `SimpleCut-2.0.0-arm64.dmg`
+- `SimpleCut Setup 2.0.0.exe` (if built)
 
 ### 4. Publish Release
 
@@ -332,7 +339,7 @@ npm run build
 **Solution**:
 ```bash
 # Remove quarantine flag
-xattr -cr /Applications/ClipForge.app
+xattr -cr /Applications/SimpleCut.app
 
 # Or rebuild with correct entitlements
 npm run dist:mac
@@ -374,25 +381,14 @@ npm install
 **Solution**: Check console for errors:
 ```bash
 # Run from terminal to see logs
-/Applications/ClipForge.app/Contents/MacOS/ClipForge
+/Applications/SimpleCut.app/Contents/MacOS/SimpleCut
 ```
 
 ---
 
 **Problem**: FFmpeg not found in packaged app
 
-**Solution**: Verify `electron-builder.json` includes FFmpeg binaries:
-```json
-{
-  "extraFiles": [
-    {
-      "from": "node_modules/@ffmpeg-installer/darwin-x64",
-      "to": "Resources/bin",
-      "filter": ["ffmpeg"]
-    }
-  ]
-}
-```
+**Solution**: Verify FFmpeg binaries are included. FFmpeg is automatically bundled via `@ffmpeg-installer/ffmpeg`. Check electron-builder configuration if issues persist.
 
 ---
 
