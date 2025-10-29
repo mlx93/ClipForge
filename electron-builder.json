@@ -1,6 +1,6 @@
 {
-  "appId": "com.clipforge.app",
-  "productName": "ClipForge",
+  "appId": "com.simplecut.app",
+  "productName": "SimpleCut",
   "directories": {
     "output": "release"
   },

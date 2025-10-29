@@ -1,4 +1,4 @@
-// Global type declarations for ClipForge renderer process
+// Global type declarations for SimpleCut renderer process
 
 import { 
   ImportVideosRequest, 

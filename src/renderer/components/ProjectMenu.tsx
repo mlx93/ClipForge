@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useTimelineStore } from '../store/timelineStore';
+import { useMediaLibraryStore } from '../store/mediaLibraryStore';
 
 const ProjectMenu: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -24,14 +25,14 @@ const ProjectMenu: React.FC = () => {
     const { electronAPI } = window;
     const result = await electronAPI.showSaveDialog({
       title: 'Create New Project',
-      defaultPath: '~/Desktop/ClipForge Projects/Untitled.clipforge',
+      defaultPath: '~/Desktop/SimpleCut Projects/Untitled.simplecut',
       filters: [
-        { name: 'ClipForge Projects', extensions: ['clipforge'] }
+        { name: 'SimpleCut Projects', extensions: ['simplecut'] }
       ]
     });
 
     if (!result.canceled && result.filePath) {
-      const projectName = result.filePath.split('/').pop()?.replace('.clipforge', '') || 'Untitled';
+      const projectName = result.filePath.split('/').pop()?.replace('.simplecut', '') || 'Untitled';
       newProject(projectName, result.filePath);
       
       // Clear timeline
@@ -52,7 +53,7 @@ const ProjectMenu: React.FC = () => {
     const result = await electronAPI.showOpenDialog({
       title: 'Open Project',
       filters: [
-        { name: 'ClipForge Projects', extensions: ['clipforge'] }
+        { name: 'SimpleCut Projects', extensions: ['simplecut'] }
       ],
       properties: ['openFile']
     });
@@ -81,6 +82,8 @@ const ProjectMenu: React.FC = () => {
     }
 
     setIsLoading(true);
+    // Set saving flag to prevent dirty flag from being set during save
+    (window as any).isSavingRef = { current: true };
     try {
       const success = await saveProject();
       if (!success) {
@@ -90,6 +93,10 @@ const ProjectMenu: React.FC = () => {
       alert('Failed to save project: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
+      // Clear saving flag after save completes
+      setTimeout(() => {
+        (window as any).isSavingRef = { current: false };
+      }, 200);
     }
   };
 
@@ -97,17 +104,18 @@ const ProjectMenu: React.FC = () => {
     const { electronAPI } = window;
     const result = await electronAPI.showSaveDialog({
       title: 'Save Project As',
-      defaultPath: currentProject?.path || '~/Desktop/ClipForge Projects/Untitled.clipforge',
+      defaultPath: currentProject?.path || '~/Desktop/SimpleCut Projects/Untitled.simplecut',
       filters: [
-        { name: 'ClipForge Projects', extensions: ['clipforge'] }
+        { name: 'SimpleCut Projects', extensions: ['simplecut'] }
       ]
     });
 
     if (!result.canceled && result.filePath) {
-      const projectName = result.filePath.split('/').pop()?.replace('.clipforge', '') || 'Untitled';
+      const projectName = result.filePath.split('/').pop()?.replace('.simplecut', '') || 'Untitled';
       
       // Create new project with the save path
       const timelineState = useTimelineStore.getState();
+      const mediaLibraryState = useMediaLibraryStore.getState();
       const newProjectData = {
         name: projectName,
         path: result.filePath,
@@ -120,6 +128,7 @@ const ProjectMenu: React.FC = () => {
           totalDuration: timelineState.totalDuration,
           zoom: timelineState.zoom
         },
+        mediaLibrary: mediaLibraryState.clips,
         settings: currentProject?.settings || {
           resolution: { width: 1920, height: 1080, name: '1080p' },
           frameRate: 30,
@@ -145,12 +154,12 @@ const ProjectMenu: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center space-x-2 text-sm">
+    <div className="flex items-center space-x-2">
       <button
         onClick={handleNewProject}
         disabled={isLoading}
         data-menu-action="new-project"
-        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded text-xs"
+        className="px-4 py-2 bg-blue-600/90 hover:bg-blue-600 disabled:bg-gray-600/50 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         New
       </button>
@@ -159,7 +168,7 @@ const ProjectMenu: React.FC = () => {
         onClick={handleOpenProject}
         disabled={isLoading}
         data-menu-action="open-project"
-        className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded text-xs"
+        className="px-4 py-2 bg-green-600/90 hover:bg-green-600 disabled:bg-gray-600/50 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg hover:shadow-green-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Open
       </button>
@@ -168,7 +177,8 @@ const ProjectMenu: React.FC = () => {
         onClick={handleSaveProject}
         disabled={isLoading || !currentProject}
         data-menu-action="save-project"
-        className="px-3 py-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 text-white rounded text-xs"
+        data-action="save"
+        className="px-4 py-2 bg-orange-600/90 hover:bg-orange-600 disabled:bg-gray-600/50 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg hover:shadow-orange-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Save
       </button>
@@ -177,16 +187,10 @@ const ProjectMenu: React.FC = () => {
         onClick={handleSaveAsProject}
         disabled={isLoading}
         data-menu-action="save-project-as"
-        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white rounded text-xs"
+        className="px-4 py-2 bg-purple-600/90 hover:bg-purple-600 disabled:bg-gray-600/50 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg hover:shadow-purple-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Save As
       </button>
-
-      {currentProject && (
-        <span className="text-gray-400 text-xs ml-2">
-          {currentProject.name}{isDirty ? ' *' : ''}
-        </span>
-      )}
     </div>
   );
 };

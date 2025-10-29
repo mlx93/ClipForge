@@ -77,7 +77,7 @@ export const useShortcutsStore = create<ShortcutsState>((set, get) => ({
     
     // Undo/Redo shortcuts
     registerShortcut({
-      key: 'z',
+      key: 'u',
       metaKey: true,
       description: 'Undo last action',
       action: () => {
@@ -87,9 +87,8 @@ export const useShortcutsStore = create<ShortcutsState>((set, get) => ({
     });
     
     registerShortcut({
-      key: 'z',
+      key: 'r',
       metaKey: true,
-      shiftKey: true,
       description: 'Redo last action',
       action: () => {
         const redoButton = document.querySelector('[data-action="redo"]') as HTMLButtonElement;
@@ -135,28 +134,11 @@ export const useShortcutsStore = create<ShortcutsState>((set, get) => ({
       }
     });
     
-    registerShortcut({
-      key: 'Home',
-      description: 'Go to beginning',
-      action: () => {
-        const homeButton = document.querySelector('[data-action="home"]') as HTMLButtonElement;
-        homeButton?.click();
-      }
-    });
     
-    registerShortcut({
-      key: 'End',
-      description: 'Go to end',
-      action: () => {
-        const endButton = document.querySelector('[data-action="end"]') as HTMLButtonElement;
-        endButton?.click();
-      }
-    });
-    
-    // Arrow key shortcuts
+    // Arrow key shortcuts - 5 second movement
     registerShortcut({
       key: 'ArrowLeft',
-      description: 'Move playhead left',
+      description: 'Move playhead left 5 seconds',
       action: () => {
         const leftButton = document.querySelector('[data-action="left"]') as HTMLButtonElement;
         leftButton?.click();
@@ -165,9 +147,30 @@ export const useShortcutsStore = create<ShortcutsState>((set, get) => ({
     
     registerShortcut({
       key: 'ArrowRight',
-      description: 'Move playhead right',
+      description: 'Move playhead right 5 seconds',
       action: () => {
         const rightButton = document.querySelector('[data-action="right"]') as HTMLButtonElement;
+        rightButton?.click();
+      }
+    });
+    
+    // Shift + Arrow key shortcuts - 1 second movement
+    registerShortcut({
+      key: 'ArrowLeft',
+      shiftKey: true,
+      description: 'Move playhead left 1 second',
+      action: () => {
+        const leftButton = document.querySelector('[data-action="left-1sec"]') as HTMLButtonElement;
+        leftButton?.click();
+      }
+    });
+    
+    registerShortcut({
+      key: 'ArrowRight',
+      shiftKey: true,
+      description: 'Move playhead right 1 second',
+      action: () => {
+        const rightButton = document.querySelector('[data-action="right-1sec"]') as HTMLButtonElement;
         rightButton?.click();
       }
     });
@@ -183,16 +186,17 @@ export const useShortcutsStore = create<ShortcutsState>((set, get) => ({
       }
     });
     
-    // Record shortcut
+    // Save shortcut
     registerShortcut({
-      key: 'r',
+      key: 's',
       metaKey: true,
-      description: 'Start recording',
+      description: 'Save project',
       action: () => {
-        const recordButton = document.querySelector('[data-action="record"]') as HTMLButtonElement;
-        recordButton?.click();
+        const saveButton = document.querySelector('[data-action="save"]') as HTMLButtonElement;
+        saveButton?.click();
       }
     });
+    
     
     // Shortcuts modal shortcut
     registerShortcut({

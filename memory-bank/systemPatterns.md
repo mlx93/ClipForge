@@ -91,8 +91,85 @@ App (Root)
 - **Progress Events**: IPC for real-time progress
 - Pattern: Async with progress callbacks
 
+### 6. Recording System Pattern ⚠️ CRITICAL - DO NOT MODIFY
+- **Screen Recording**: Desktop video + microphone audio only
+- **Desktop Audio Removed**: macOS desktop audio capture is unreliable
+- **AudioContext Required**: Keeps microphone tracks alive during recording
+- **Immediate MediaRecorder**: Start within 50ms of AudioContext creation
+- **File Validation**: Post-FFmpeg validation ensures valid MP4 output
+- Pattern: Video-only desktop capture + separate microphone audio + active consumption
+
 **CRITICAL IMPLEMENTATION NOTES:**
-This export logic is essential for app functionality. DO NOT modify without understanding these requirements:
+These systems are essential for app functionality. DO NOT modify without understanding these requirements:
+
+## RECORDING SYSTEM - CRITICAL WARNINGS ⚠️
+
+**DO NOT MODIFY RECORDING LOGIC** - Screen recording with audio is now working perfectly and is stable.
+
+### Required Implementation Patterns:
+
+1. **Desktop Audio Constraint Removal (REQUIRED)**:
+   ```typescript
+   // CORRECT - No audio constraint for screen recordings
+   const constraints = {
+     video: { /* desktop capture */ },
+     // NO audio constraint - desktop audio doesn't work on macOS
+   };
+   
+   // WRONG - This causes audio tracks to end immediately
+   constraints.audio = { chromeMediaSource: 'desktop' }; // ❌ DO NOT USE
+   ```
+   - **Why**: macOS desktop audio capture is unreliable and causes microphone tracks to end
+   - **Result**: All audio tracks end before MediaRecorder can start
+   - **Files**: src/main/ipc/handlers.ts (START_RECORDING handler)
+
+2. **AudioContext Active Consumption (REQUIRED)**:
+   ```typescript
+   // CORRECT - Create AudioContext from combined stream
+   const audioContext = new AudioContext();
+   const audioSource = audioContext.createMediaStreamSource(mediaStream);
+   const analyser = audioContext.createAnalyser();
+   const gainNode = audioContext.createGain();
+   gainNode.gain.value = 0; // Silent but active
+   audioSource.connect(analyser).connect(gainNode);
+   ```
+   - **Why**: Audio tracks end when not actively consumed
+   - **Result**: Microphone tracks stay alive during recording
+   - **Files**: src/renderer/components/RecordingPanel.tsx
+
+3. **Immediate MediaRecorder Start (REQUIRED)**:
+   ```typescript
+   // CORRECT - Start within 50ms of AudioContext creation
+   setTimeout(() => {
+     mediaRecorder.start();
+   }, 50);
+   ```
+   - **Why**: Delays cause audio tracks to end before consumption
+   - **Result**: MediaRecorder starts consuming stream immediately
+   - **Files**: src/renderer/components/RecordingPanel.tsx
+
+4. **File Validation After FFmpeg (REQUIRED)**:
+   ```typescript
+   // CORRECT - Validate file after FFmpeg completion
+   const fileExists = await checkFileExists(outputPath);
+   const fileSize = fs.statSync(outputPath).size;
+   const ffprobeResult = await ffprobe(outputPath);
+   if (!fileExists || fileSize === 0 || ffprobeResult.streams.length === 0) {
+     throw new Error('Invalid output file');
+   }
+   ```
+   - **Why**: FFmpeg success doesn't guarantee valid output files
+   - **Result**: Only valid MP4 files are reported as successfully saved
+   - **Files**: src/main/ipc/handlers.ts (SAVE_RECORDING handler)
+
+**Testing Requirements**:
+- Screen recording with audio enabled
+- Microphone permission granted
+- Audio tracks remain live throughout recording
+- Output MP4 file plays correctly with audio
+- File validation catches corrupted outputs
+
+## EXPORT SYSTEM - CRITICAL WARNINGS ⚠️
 
 1. **Module Import Pattern (REQUIRED)**:
    ```typescript

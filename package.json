@@ -28,7 +28,7 @@
     "typescript",
     "ffmpeg"
   ],
-  "author": "ClipForge Team",
+  "author": "SimpleCut Team",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.10.0",
@@ -67,8 +67,8 @@
     "zustand": "^4.4.7"
   },
   "build": {
-    "appId": "com.clipforge.app",
-    "productName": "ClipForge",
+    "appId": "com.simplecut.app",
+    "productName": "SimpleCut",
     "directories": {
       "output": "release"
     },

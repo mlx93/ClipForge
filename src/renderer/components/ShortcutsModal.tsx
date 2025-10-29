@@ -10,20 +10,20 @@ const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose }) => {
     {
       category: 'General',
       items: [
-        { key: 'Cmd+Z', description: 'Undo last action' },
-        { key: 'Cmd+Shift+Z', description: 'Redo last action' },
+        { key: 'Cmd+U', description: 'Undo last action' },
+        { key: 'Cmd+R', description: 'Redo last action' },
         { key: 'Cmd+E', description: 'Export video' },
-        { key: 'Cmd+R', description: 'Start recording' },
+        { key: 'Cmd+S', description: 'Save project' },
       ]
     },
     {
       category: 'Playback',
       items: [
         { key: 'Space', description: 'Play/Pause video' },
-        { key: 'Home', description: 'Go to beginning' },
-        { key: 'End', description: 'Go to end' },
-        { key: '←', description: 'Move playhead left' },
-        { key: '→', description: 'Move playhead right' },
+        { key: '←', description: 'Move playhead left 5 seconds' },
+        { key: '→', description: 'Move playhead right 5 seconds' },
+        { key: 'Shift+←', description: 'Move playhead left 1 second' },
+        { key: 'Shift+→', description: 'Move playhead right 1 second' },
       ]
     },
     {
@@ -35,7 +35,7 @@ const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose }) => {
         { key: 'Tab', description: 'Select next clip' },
         { key: 'Shift+Tab', description: 'Select previous clip' },
       ]
-    }
+    },
   ];
 
   if (!isOpen) return null;

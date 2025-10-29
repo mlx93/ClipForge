@@ -564,15 +564,6 @@ const VideoPreview: React.FC = () => {
             seekRelative(5);
           }
           break;
-        case 'Home':
-          event.preventDefault();
-          useTimelineStore.getState().setPlayhead(0);
-          break;
-        case 'End':
-          event.preventDefault();
-          const totalDuration = useTimelineStore.getState().totalDuration;
-          useTimelineStore.getState().setPlayhead(totalDuration);
-          break;
       }
     };
 

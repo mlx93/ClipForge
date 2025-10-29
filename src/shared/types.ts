@@ -30,6 +30,7 @@ export interface Project {
   created: Date;
   modified: Date;
   timeline: TimelineState;
+  mediaLibrary: Clip[]; // Media library clips
   settings: ProjectSettings;
 }
 

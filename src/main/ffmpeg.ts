@@ -137,6 +137,9 @@ export const exportTimeline = async (
 
     // Configure output
     
+    // Target frame rate for normalization (prevents frame duplication issues)
+    const targetFrameRate = 30;
+    
     // Determine if we need scaling
     const needsScaling = settings.resolution.name !== 'Source' && 
                         settings.resolution.width > 0 && 
@@ -148,81 +151,105 @@ export const exportTimeline = async (
 
     // Handle multiple clips by concatenating them
     if (clips.length > 1) {
-      // Build filter inputs dynamically based on audio availability
-      // For each clip, we need [video][audio] pairs
-      // If a clip has no audio, we use the silent audio track we generated
-      const filterInputs: string[] = [];
+      // Build normalization filters for each input
+      // Normalize video to target frame rate and audio to 48kHz
+      const normalizationFilters: string[] = [];
+      const normalizedVideoLabels: string[] = [];
+      const normalizedAudioLabels: string[] = [];
       
       clips.forEach((clip, index) => {
-        filterInputs.push(`[${index}:v]`);
+        const videoLabel = `v${index}`;
+        const audioLabel = `a${index}`;
         
+        // Normalize video frame rate to prevent duplication
+        normalizationFilters.push(`[${index}:v]fps=${targetFrameRate}[${videoLabel}]`);
+        normalizedVideoLabels.push(`[${videoLabel}]`);
+        
+        // Normalize audio sample rate for consistency
         if (clipsWithAudio[index]) {
-          // Use audio from the video file
-          filterInputs.push(`[${index}:a]`);
+          normalizationFilters.push(`[${index}:a]aresample=48000:async=1[${audioLabel}]`);
+          normalizedAudioLabels.push(`[${audioLabel}]`);
         } else {
-          // Use silent audio we generated
+          // Use silent audio we generated (already at 48kHz)
           const silentAudioIndex = silentAudioInputIndices.get(index);
           if (silentAudioIndex !== undefined) {
-            filterInputs.push(`[${silentAudioIndex}:a]`);
+            normalizedAudioLabels.push(`[${silentAudioIndex}:a]`);
           } else {
-            // Fallback: shouldn't happen, but handle gracefully
+            // Fallback: shouldn't happen
             console.warn(`[FFmpeg Export] No silent audio index found for clip ${index}, using video audio`);
-            filterInputs.push(`[${index}:a]`);
+            normalizationFilters.push(`[${index}:a]aresample=48000:async=1[${audioLabel}]`);
+            normalizedAudioLabels.push(`[${audioLabel}]`);
           }
         }
       });
       
-      const filterConcat = `concat=n=${clips.length}:v=1:a=1[v][a]`;
+      // Build concat filter inputs: [v0][a0][v1][a1]...
+      const concatInputs: string[] = [];
+      clips.forEach((_, index) => {
+        concatInputs.push(normalizedVideoLabels[index]);
+        concatInputs.push(normalizedAudioLabels[index]);
+      });
       
-      // Build the complete filter chain
-      let filterChain = `${filterInputs.join('')}${filterConcat}`;
+      const filterConcat = `concat=n=${clips.length}:v=1:a=1[vconcat][aconcat]`;
+      
+      // Build the complete filter chain: normalize → concat → scale (if needed)
+      let filterChain = normalizationFilters.join(';') + ';' + concatInputs.join('') + filterConcat;
+      
+      if (scaleFilter) {
+        filterChain += `;[vconcat]${scaleFilter}[outv]`;
+        command = command.complexFilter([filterChain]).outputOptions([
+          '-map [outv]',
+          '-map [aconcat]'
+        ]);
+      } else {
+        command = command.complexFilter([filterChain]).outputOptions([
+          '-map [vconcat]',
+          '-map [aconcat]'
+        ]);
+      }
       
       console.log('[FFmpeg Export] Filter chain:', filterChain);
       console.log('[FFmpeg Export] Clips with audio:', clipsWithAudio);
       console.log('[FFmpeg Export] Silent audio indices:', Array.from(silentAudioInputIndices.entries()));
-      
-      // If scaling is needed, add it to the filter chain
-      if (scaleFilter) {
-        filterChain += `;[v]${scaleFilter}[outv]`;
-        command = command.complexFilter([filterChain]).outputOptions([
-          '-map [outv]',
-          '-map [a]'
-        ]);
-      } else {
-        command = command.complexFilter([filterChain]).outputOptions([
-          '-map [v]',
-          '-map [a]'
-        ]);
-      }
     } else {
-      // Single clip - handle audio separately
+      // Single clip - normalize frame rate
       const hasAudio = clipsWithAudio[0];
+      const singleClipFilters: string[] = [];
+      
+      // Normalize video frame rate
+      singleClipFilters.push(`[0:v]fps=${targetFrameRate}[vnorm]`);
       
       if (hasAudio) {
-        // Has audio - normal processing
+        // Normalize audio sample rate
+        singleClipFilters.push(`[0:a]aresample=48000:async=1[anorm]`);
+        
         if (scaleFilter) {
-          command = command.complexFilter([
-            `[0:v]${scaleFilter}[outv]`
-          ]).outputOptions([
+          singleClipFilters.push(`[vnorm]${scaleFilter}[outv]`);
+          command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
             '-map [outv]',
-            '-map 0:a'
+            '-map [anorm]'
           ]);
         } else {
-          command.outputOptions(['-map 0:v', '-map 0:a']);
+          command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
+            '-map [vnorm]',
+            '-map [anorm]'
+          ]);
         }
       } else {
         // No audio - use silent audio we generated
         const silentAudioIndex = silentAudioInputIndices.get(0);
         if (silentAudioIndex !== undefined) {
           if (scaleFilter) {
-            command = command.complexFilter([
-              `[0:v]${scaleFilter}[outv]`
-            ]).outputOptions([
+            singleClipFilters.push(`[vnorm]${scaleFilter}[outv]`);
+            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
               '-map [outv]',
               `-map ${silentAudioIndex}:a`
             ]);
           } else {
-            command.outputOptions([`-map 0:v`, `-map ${silentAudioIndex}:a`]);
+            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
+              '-map [vnorm]',
+              `-map ${silentAudioIndex}:a`
+            ]);
           }
         } else {
           // Fallback: generate silent audio on the fly
@@ -235,14 +262,16 @@ export const exportTimeline = async (
             .inputOptions(['-f', 'lavfi', '-t', clipDuration.toString()]);
           
           if (scaleFilter) {
-            command = command.complexFilter([
-              `[0:v]${scaleFilter}[outv]`
-            ]).outputOptions([
+            singleClipFilters.push(`[vnorm]${scaleFilter}[outv]`);
+            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
               '-map [outv]',
               '-map 1:a'
             ]);
           } else {
-            command.outputOptions(['-map 0:v', '-map 1:a']);
+            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
+              '-map [vnorm]',
+              '-map 1:a'
+            ]);
           }
         }
       }
@@ -255,6 +284,7 @@ export const exportTimeline = async (
         `-crf ${FFMPEG_CRF}`,
         '-c:a aac',
         `-b:a ${FFMPEG_AUDIO_BITRATE}`,
+        '-vsync 2', // Constant frame rate - prevents frame duplication
         '-movflags +faststart', // Optimize for streaming (works for both MP4 and MOV)
         '-pix_fmt yuv420p' // Ensure compatibility
       ])

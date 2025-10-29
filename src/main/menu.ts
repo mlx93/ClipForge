@@ -3,10 +3,10 @@ import { Menu, MenuItemConstructorOptions, app, shell, BrowserWindow } from 'ele
 export const createApplicationMenu = (mainWindow: BrowserWindow): Menu => {
   const template: MenuItemConstructorOptions[] = [
     {
-      label: 'ClipForge',
+      label: 'SimpleCut',
       submenu: [
         {
-          label: 'About ClipForge',
+          label: 'About SimpleCut',
           role: 'about'
         },
         { type: 'separator' },
@@ -17,14 +17,14 @@ export const createApplicationMenu = (mainWindow: BrowserWindow): Menu => {
         },
         { type: 'separator' },
         {
-          label: 'Hide ClipForge',
+          label: 'Hide SimpleCut',
           accelerator: 'Command+H',
           role: 'hide'
         },
         {
           label: 'Hide Others',
           accelerator: 'Command+Shift+H',
-          role: 'hideothers'
+          role: 'hideOthers'
         },
         {
           label: 'Show All',
@@ -300,7 +300,7 @@ export const createApplicationMenu = (mainWindow: BrowserWindow): Menu => {
         {
           label: 'Learn More',
           click: () => {
-            shell.openExternal('https://github.com/mlx93/ClipForge');
+            shell.openExternal('https://github.com/mlx93/SimpleCut');
           }
         },
         {

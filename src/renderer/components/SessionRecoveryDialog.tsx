@@ -79,7 +79,7 @@ const SessionRecoveryDialog: React.FC<SessionRecoveryDialogProps> = ({
         
         <div className="mb-4">
           <p className="text-sm text-gray-600">
-            ClipForge detected an unexpected shutdown. Would you like to recover your last session?
+            SimpleCut detected an unexpected shutdown. Would you like to recover your last session?
           </p>
         </div>
         

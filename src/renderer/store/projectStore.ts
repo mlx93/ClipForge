@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Project, ProjectSettings, DEFAULT_PROJECT_SETTINGS } from '@shared/types';
 import { useTimelineStore } from './timelineStore';
+import { useMediaLibraryStore } from './mediaLibraryStore';
 import { useSessionStore } from './sessionStore';
 
 interface ProjectStore {
@@ -55,6 +56,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         totalDuration: timelineState.totalDuration,
         zoom: timelineState.zoom
       },
+      mediaLibrary: [],
       settings: DEFAULT_PROJECT_SETTINGS
     };
 
@@ -100,6 +102,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     
     useTimelineStore.getState().setZoom(project.timeline.zoom);
     
+    // Load media library if it exists in the project
+    if (project.mediaLibrary && project.mediaLibrary.length > 0) {
+      useMediaLibraryStore.getState().setClips(project.mediaLibrary);
+    } else {
+      // Clear media library if no media library data in project
+      useMediaLibraryStore.getState().setClips([]);
+    }
+    
     // Enable auto-save for loaded project
     get().enableAutoSave();
     
@@ -112,10 +122,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     if (!currentProject) return false;
 
     try {
-      // Get current timeline state
+      // Get current timeline and media library state
       const timelineState = useTimelineStore.getState();
+      const mediaLibraryState = useMediaLibraryStore.getState();
       
-      // Update project with current timeline state
+      // Update project with current timeline and media library state
       const updatedProject: Project = {
         ...currentProject,
         modified: new Date(),
@@ -125,7 +136,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           selectedClipId: timelineState.selectedClipId,
           totalDuration: timelineState.totalDuration,
           zoom: timelineState.zoom
-        }
+        },
+        mediaLibrary: mediaLibraryState.clips
       };
 
       // Save via IPC

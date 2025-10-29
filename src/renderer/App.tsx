@@ -24,7 +24,7 @@ const App: React.FC = () => {
   const { clips, addClips } = useTimelineStore();
   const { isExporting, showExportDialog, setShowExportDialog } = useExportStore();
   const { clips: mediaLibraryClips, setClips } = useMediaLibraryStore();
-  const { setDirty, currentProject, enableAutoSave } = useProjectStore();
+  const { setDirty, currentProject, enableAutoSave, isDirty } = useProjectStore();
   const { registerDefaultShortcuts, handleKeyDown } = useShortcutsStore();
   const { hasRecoveryData, loadSession } = useSessionStore();
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +32,7 @@ const App: React.FC = () => {
   const [showSessionRecovery, setShowSessionRecovery] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const initialLoadRef = React.useRef(true);
+  const isSavingRef = React.useRef(false);
 
   useEffect(() => {
     // Check for session recovery on app start
@@ -129,6 +130,11 @@ const App: React.FC = () => {
       return;
     }
     
+    // Don't mark dirty if we're currently saving
+    if (isSavingRef.current || (window as any).isSavingRef?.current) {
+      return;
+    }
+    
     // Only set dirty if we have a current project
     if (currentProject) {
       setDirty(true);
@@ -207,26 +213,48 @@ const App: React.FC = () => {
       
       {/* Header */}
       <header 
-        className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between" 
+        className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between" 
         style={{ 
           paddingTop: '20px',
           WebkitAppRegion: 'drag' as any
         }}
       >
-        <div className="flex items-center space-x-4 ml-16">
-          <h1 className="text-2xl font-bold text-white">ClipForge</h1>
-          <span className="text-sm text-gray-400">v1.2.0</span>
-        </div>
-        
-        <div className="flex items-center space-x-4" style={{ WebkitAppRegion: 'no-drag' as any }}>
+        {/* Left Section - File Management */}
+        <div className="flex items-center space-x-3" style={{ WebkitAppRegion: 'no-drag' as any }}>
           <Suspense fallback={<div className="text-gray-400 text-sm">Loading...</div>}>
             <ProjectMenu />
           </Suspense>
+        </div>
+        
+        {/* Center Section - App Title and Project */}
+        <div className="flex-1 flex justify-center items-center space-x-6">
+          {/* App Title */}
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-white mb-1">SimpleCut</h1>
+            <span className="text-sm text-gray-300">v2.0.0</span>
+          </div>
+          
+          {/* Project Title Box */}
+          {currentProject && (
+            <div className="bg-gray-700/50 backdrop-blur-sm rounded-xl px-6 py-3 border border-gray-600/50 shadow-lg">
+              <div className="text-center">
+                <div className="text-sm text-gray-400 mb-1">Current Project</div>
+                <div className="text-xl font-semibold text-white">
+                  {currentProject.name}
+                  {isDirty && <span className="text-yellow-400 ml-1">*</span>}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Right Section - Action Buttons */}
+        <div className="flex items-center space-x-3" style={{ WebkitAppRegion: 'no-drag' as any }}>
           <HistoryControls />
           <button
             onClick={() => setShowShortcuts(true)}
             data-action="shortcuts"
-            className="text-gray-300 hover:text-white px-3 py-2 rounded-lg font-medium transition-colors"
+            className="text-gray-300 hover:text-white px-4 py-2 rounded-lg font-medium transition-colors hover:bg-gray-700/50"
             title="Keyboard Shortcuts (F1)"
           >
             Shortcuts
@@ -234,8 +262,8 @@ const App: React.FC = () => {
           <button
             onClick={() => setShowRecordingPanel(true)}
             data-action="record"
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-            title="Record (Cmd+R)"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-lg hover:shadow-red-600/25"
+            title="Record (Shift+R)"
           >
             Record
           </button>
@@ -243,7 +271,7 @@ const App: React.FC = () => {
             onClick={() => setShowExportDialog(true)}
             disabled={clips.length === 0 || isExporting}
             data-action="export"
-            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-blue-600/25"
             title="Export (Cmd+E)"
           >
             {isExporting ? 'Exporting...' : 'Export'}
