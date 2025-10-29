@@ -1,7 +1,26 @@
 # System Patterns & Architecture
 
 ## Architecture Overview
-ClipForge follows Electron's multi-process architecture with clear separation between main (Node.js) and renderer (React) processes.
+SimpleCut follows Electron's multi-process architecture with clear separation between main (Node.js) and renderer (React) processes.
+
+## SimpleCut v2.0.0 Architecture Updates ✅
+
+### App Rebranding Patterns
+- **Consistent Naming**: All references updated from "ClipForge" to "SimpleCut"
+- **File Extensions**: .clipforge → .simplecut with full backward compatibility
+- **App ID**: com.clipforge.app → com.simplecut.app
+- **Version Management**: Centralized in constants.ts (APP_NAME, APP_VERSION)
+
+### Modernized Header UI Architecture
+- **Three-Section Layout**: Left (file management) - Center (app title + project) - Right (actions)
+- **Glassmorphism Design**: Semi-transparent backgrounds with backdrop blur effects
+- **Project State Display**: Prominent project name box with dirty flag indicator
+- **Responsive Design**: Flexible layout that adapts to different screen sizes
+
+### Enhanced State Management
+- **Media Library Persistence**: Added to project save/load system
+- **Dirty Flag Management**: Improved state tracking to prevent false dirty flags
+- **Project Type Updates**: Added mediaLibrary field to Project interface
 
 ## Recent Architecture Improvements (Last 4 Commits)
 
