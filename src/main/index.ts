@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, dialog, ipcMain, session } from 'electron';
 import { join } from 'path';
 import { isDev } from './utils';
 import { setupIpcHandlers } from './ipc/handlers';
@@ -20,7 +20,6 @@ const createWindow = (): void => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
       preload: join(__dirname, '../preload/preload.cjs')
     },
     titleBarStyle: 'hidden',
@@ -59,6 +58,26 @@ app.whenReady().then(() => {
   createWindow();
   setupIpcHandlers(mainWindow!);
   
+  // Set up permission request handler for media access
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    // Always allow media-related permissions - we'll handle denial gracefully
+    if (permission === 'media') {
+      console.log('[Permissions] Requesting permission:', permission);
+      callback(true); // Grant permission
+    } else {
+      callback(false); // Deny other permissions
+    }
+  });
+  
+  // Set up permission check handler
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    // Allow media-related permissions
+    if (permission === 'media') {
+      return true;
+    }
+    return false;
+  });
+  
   // Set up application menu
   const menu = createApplicationMenu(mainWindow!);
   Menu.setApplicationMenu(menu);
@@ -81,8 +100,8 @@ app.on('window-all-closed', () => {
 
 // Security: Prevent new window creation
 app.on('web-contents-created', (_, contents) => {
-  contents.on('new-window', (event) => {
-    event.preventDefault();
+  contents.setWindowOpenHandler(() => {
+    return { action: 'deny' };
   });
 });
 

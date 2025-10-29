@@ -40,6 +40,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
   const [chunks, setChunks] = useState<Blob[]>([]);
   const [cameraReady, setCameraReady] = useState(false); // Track if camera exposure is ready
   const [streamReady, setStreamReady] = useState(false); // Track if stream is ready for preview
+  const micStreamRef = useRef<MediaStream | null>(null); // Keep reference to mic stream for screen recording
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -65,6 +66,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       setRecordingBlob(null);
       setChunks([]);
       chunksRef.current = [];
+      // Stop microphone stream if it exists
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
+      }
       resetRecording();
     }
   }, [isOpen, setRecordingBlob]);
@@ -91,8 +97,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
         enabled: track.enabled
       })));
       
-      // Set stream source
-      video.srcObject = stream;
+      // Set stream source - ALWAYS set it, even if already set, to ensure it's attached
+      if (video.srcObject !== stream) {
+        console.log('[Recording] Attaching stream to video element');
+        video.srcObject = stream;
+      }
       
       // For camera, show spinner initially - preview will be shown when recording starts
       if (settings.videoSource?.type === 'webcam') {
@@ -102,6 +111,11 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
         video.muted = true; // Mute preview to avoid feedback
         video.autoplay = true;
         video.playsInline = true;
+        
+        // Try to play immediately for camera - sometimes it works
+        video.play().catch(err => {
+          console.log('[Recording] Initial play attempt failed (expected):', err.message);
+        });
       } else {
         // Screen recording shows immediately - no loading state needed
         setStreamReady(true);
@@ -196,6 +210,79 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
     try {
       setIsLoading(true);
       
+      // Request permissions BEFORE starting recording
+      const isWebcam = settings.videoSource.type === 'webcam';
+      const needsMic = settings.audioSource;
+      const needsCamera = isWebcam;
+      
+      // For screen recording with audio, we also need microphone permission
+      const needsMicPermission = needsMic; // Both webcam and screen recording need mic if audio is enabled
+      
+      if (needsMicPermission || needsCamera) {
+        console.log('[Recording] Requesting media permissions...', { mic: needsMicPermission, camera: needsCamera });
+        
+        try {
+          const permissionResult = await window.electronAPI.requestMediaPermissions({
+            mic: needsMicPermission,
+            camera: needsCamera
+          });
+          
+          console.log('[Recording] Permission check result:', permissionResult);
+          
+          // If permissions are denied on macOS, show helpful message
+          if (permissionResult.platform === 'darwin') {
+            if (permissionResult.denied && permissionResult.denied.length > 0) {
+              const deniedMessages: string[] = [];
+              if (permissionResult.denied.includes('microphone')) {
+                deniedMessages.push('Microphone access was denied. Please enable it in System Settings > Privacy & Security > Microphone.');
+              }
+              if (permissionResult.denied.includes('camera')) {
+                deniedMessages.push('Camera access was denied. Please enable it in System Settings > Privacy & Security > Camera.');
+              }
+              toast.error(deniedMessages.join(' '), { duration: 8000 });
+              setIsLoading(false);
+              return;
+            }
+            
+            // Check if permissions were successfully granted
+            if (permissionResult.success && permissionResult.granted) {
+              const newlyGranted: string[] = [];
+              if (needsMic && permissionResult.granted.microphone) {
+                newlyGranted.push('microphone');
+              }
+              if (needsCamera && permissionResult.granted.camera) {
+                newlyGranted.push('camera');
+              }
+              
+              if (newlyGranted.length > 0) {
+                console.log('[Recording] Permissions granted:', newlyGranted.join(', '));
+                // Continue with recording - permissions are now granted
+              }
+            } else if (!permissionResult.success) {
+              const missingPermissions: string[] = [];
+              if (needsMic && (!permissionResult.granted?.microphone)) {
+                missingPermissions.push('microphone');
+              }
+              if (needsCamera && (!permissionResult.granted?.camera)) {
+                missingPermissions.push('camera');
+              }
+              
+              if (missingPermissions.length > 0) {
+                toast.error(`${missingPermissions.join(' and ')} access is required to record. Please grant permissions when prompted.`, { duration: 8000 });
+                setIsLoading(false);
+                return;
+              }
+            }
+            
+            // Permissions are granted or were just granted - continue with recording
+            console.log('[Recording] Permissions granted, proceeding with recording');
+          }
+        } catch (permError) {
+          console.warn('[Recording] Permission check failed (will proceed anyway):', permError);
+          // Continue anyway - getUserMedia will handle permission requests
+        }
+      }
+      
       // Get recording constraints from main process
       const result = await window.electronAPI.startRecording({
         videoSourceId: settings.videoSource.id,
@@ -209,6 +296,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       }
 
       // Get user media with the constraints
+      // This will trigger system permission prompts if not already granted
       console.log('[Recording] Constraints from main process:', JSON.stringify(result.constraints, null, 2));
       console.log('[Recording] Selected video source:', settings.videoSource);
       console.log('[Recording] Video source ID:', settings.videoSource?.id);
@@ -219,7 +307,27 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       if (result.isWebcam) {
         // For webcam, use standard getUserMedia
         console.log('[Recording] Requesting webcam stream...');
-        mediaStream = await navigator.mediaDevices.getUserMedia(result.constraints);
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia(result.constraints);
+        } catch (userMediaError: any) {
+          console.error('[Recording] getUserMedia error:', userMediaError);
+          
+          // Check if it's a permission error
+          if (userMediaError.name === 'NotAllowedError' || userMediaError.name === 'PermissionDeniedError') {
+            const errorMessage = needsMic && needsCamera
+              ? 'Microphone and camera access are required. Please grant permissions in System Settings > Privacy & Security.'
+              : needsMic
+              ? 'Microphone access is required. Please grant permissions in System Settings > Privacy & Security > Microphone.'
+              : 'Camera access is required. Please grant permissions in System Settings > Privacy & Security > Camera.';
+            
+            toast.error(errorMessage, { duration: 8000 });
+            setIsLoading(false);
+            return;
+          }
+          
+          // Re-throw other errors
+          throw userMediaError;
+        }
       } else {
         // For screen/window recording in Electron
         // Electron requires getUserMedia with chromeMediaSource, but it might not work directly
@@ -303,6 +411,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
               }
             } else {
               console.log('[Recording] Screen capture confirmed - track label:', track.label);
+              // Note: Audio fallback for screen recording is handled AFTER stream creation (see below)
             }
           }
         } catch (error) {
@@ -321,6 +430,137 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
         readyState: track.readyState,
         settings: track.getSettings()
       })));
+      
+      // CRITICAL: For screen recording, ensure we have audio if requested
+      // Check audio tracks AFTER stream is created but BEFORE MediaRecorder
+      console.log('[Recording] ===== AUDIO CHECK START =====');
+      console.log('[Recording] Checking audio requirements:', {
+        isWebcam: result.isWebcam,
+        audioSource: settings.audioSource,
+        audioTracksInStream: mediaStream.getAudioTracks().length,
+        audioSourceType: typeof settings.audioSource,
+        audioSourceValue: settings.audioSource
+      });
+      
+      if (!result.isWebcam && settings.audioSource) {
+        console.log('[Recording] ===== ADDING MICROPHONE AUDIO =====');
+        const currentAudioTracks = mediaStream.getAudioTracks();
+        console.log('[Recording] Screen recording with audio requested. Current audio tracks:', currentAudioTracks.length);
+        
+        // Check if desktop audio tracks are actually working (not ended)
+        const activeAudioTracks = currentAudioTracks.filter(track => track.readyState === 'live');
+        console.log('[Recording] Active (live) audio tracks:', activeAudioTracks.length);
+        
+        // ALWAYS add microphone audio for screen recording if audio is requested
+        // Desktop audio capture often fails or ends immediately, so we proactively add mic audio
+        console.log('[Recording] Proactively adding microphone audio for screen recording...');
+        
+        try {
+          // Request microphone audio separately
+          console.log('[Recording] Calling getUserMedia for microphone...');
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: true
+          });
+          console.log('[Recording] Microphone stream obtained:', micStream.id);
+          
+          // Store reference to mic stream so it doesn't get garbage collected
+          micStreamRef.current = micStream;
+          
+          // Get audio tracks from microphone stream
+          const micAudioTracks = micStream.getAudioTracks();
+          console.log('[Recording] Microphone audio tracks found:', micAudioTracks.length);
+          
+          if (micAudioTracks.length > 0) {
+            console.log('[Recording] Adding microphone audio tracks to screen recording:', micAudioTracks.length);
+            // Add microphone audio tracks to the screen stream
+            micAudioTracks.forEach(track => {
+              mediaStream.addTrack(track);
+              console.log('[Recording] Added audio track:', track.label, 'enabled:', track.enabled, 'readyState:', track.readyState);
+              
+              // Ensure track is enabled
+              if (!track.enabled) {
+                track.enabled = true;
+                console.log('[Recording] Enabled audio track:', track.label);
+              }
+              
+              // Monitor audio track to ensure it stays alive
+              track.addEventListener('ended', () => {
+                console.error('[Recording] CRITICAL: Microphone audio track ended unexpectedly!');
+              });
+            });
+            
+            // CRITICAL: Don't stop the mic stream - keep it alive during recording
+            // Only stop video tracks if any (there shouldn't be any)
+            micStream.getVideoTracks().forEach(track => track.stop());
+            
+            // Verify audio tracks are now in the stream
+            const finalAudioTracks = mediaStream.getAudioTracks();
+            console.log('[Recording] ===== AUDIO ADDED SUCCESSFULLY =====');
+            console.log('[Recording] Audio tracks after adding mic:', finalAudioTracks.length);
+            finalAudioTracks.forEach((track, idx) => {
+              console.log(`[Recording] Final audio track ${idx}:`, {
+                label: track.label,
+                enabled: track.enabled,
+                readyState: track.readyState,
+                muted: track.muted
+              });
+            });
+          } else {
+            console.warn('[Recording] No microphone audio tracks available');
+            micStream.getTracks().forEach(track => track.stop());
+            micStreamRef.current = null;
+          }
+        } catch (micError) {
+          console.error('[Recording] ===== ERROR ADDING MICROPHONE AUDIO =====');
+          console.error('[Recording] Could not add microphone audio:', micError);
+          micStreamRef.current = null;
+          // Show error toast if microphone permission is denied
+          if (micError instanceof Error && micError.name === 'NotAllowedError') {
+            toast.error('Microphone access is required for screen recording with audio. Please enable it in System Settings.');
+          }
+          // Continue without audio - screen recording will work without it
+        }
+        
+        // Also monitor desktop audio tracks if they exist (they often end immediately)
+        if (currentAudioTracks.length > 0) {
+          console.log('[Recording] Monitoring desktop audio tracks:', currentAudioTracks.length);
+          currentAudioTracks.forEach((track, idx) => {
+            console.log(`[Recording] Desktop audio track ${idx}:`, {
+              label: track.label,
+              enabled: track.enabled,
+              readyState: track.readyState,
+              muted: track.muted
+            });
+            
+            // Monitor these tracks - they might end unexpectedly
+            track.addEventListener('ended', () => {
+              console.error(`[Recording] CRITICAL: Desktop audio track ${idx} ended unexpectedly!`);
+              // If desktop audio track ends and we don't have mic audio, try to add it
+              const remainingAudioTracks = mediaStream.getAudioTracks();
+              if (remainingAudioTracks.length === 0 && !micStreamRef.current) {
+                console.log('[Recording] Desktop audio track ended, attempting to add microphone audio as fallback...');
+                navigator.mediaDevices.getUserMedia({ audio: true }).then(micStream => {
+                  micStreamRef.current = micStream;
+                  const micTracks = micStream.getAudioTracks();
+                  micTracks.forEach(micTrack => {
+                    mediaStream.addTrack(micTrack);
+                    console.log('[Recording] Added microphone audio track as fallback:', micTrack.label);
+                  });
+                }).catch(err => {
+                  console.error('[Recording] Could not add microphone audio fallback:', err);
+                });
+              }
+            });
+          });
+        }
+      } else {
+        console.log('[Recording] Skipping microphone audio:', {
+          isWebcam: result.isWebcam,
+          audioSource: settings.audioSource,
+          reason: result.isWebcam ? 'is webcam' : (!settings.audioSource ? 'audio not requested' : 'unknown')
+        });
+      }
+      console.log('[Recording] ===== AUDIO CHECK END =====');
       
       // For camera, wait a moment before marking stream as ready to show spinner
       if (result.isWebcam) {
@@ -417,27 +657,84 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       }
       
       // Try different MIME types in order of preference
-      // Ensure audio codec is included (opus) for recordings with audio
+      // Note: MP4 recording is supported in Chrome 126+ (June 2024) and newer Electron versions
+      // However, WebM is more reliable for streaming/recording scenarios
+      // We'll try MP4 first, but fall back to WebM if not supported
       const hasAudio = audioTracks.length > 0;
-      let mimeType = hasAudio ? 'video/webm;codecs=vp9,opus' : 'video/webm;codecs=vp9';
+      
+      // CRITICAL: Verify audio tracks are actually enabled and producing data
+      if (hasAudio) {
+        const enabledAudioTracks = audioTracks.filter(t => t.enabled && t.readyState === 'live');
+        if (enabledAudioTracks.length === 0) {
+          console.error('[Recording] WARNING: Audio tracks exist but none are enabled/live!');
+          console.error('[Recording] Audio tracks state:', audioTracks.map(t => ({
+            enabled: t.enabled,
+            readyState: t.readyState,
+            muted: t.muted,
+            label: t.label
+          })));
+        } else {
+          console.log('[Recording] Audio tracks verified:', enabledAudioTracks.length, 'enabled and live');
+        }
+      }
+      
+      // Try MP4 first (if supported by Electron version)
+      let mimeType = hasAudio 
+        ? 'video/mp4;codecs=avc1.42E01E,mp4a.40.2' // H.264 Baseline + AAC
+        : 'video/mp4;codecs=avc1.42E01E'; // H.264 Baseline only
       
       if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = hasAudio ? 'video/webm;codecs=vp8,opus' : 'video/webm;codecs=vp8';
+        // Fallback to WebM with VP9/Opus (more universally supported)
+        // IMPORTANT: Include opus codec in MIME type to ensure audio is recorded
+        mimeType = hasAudio ? 'video/webm;codecs=vp9,opus' : 'video/webm;codecs=vp9';
+        
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm';
+          mimeType = hasAudio ? 'video/webm;codecs=vp8,opus' : 'video/webm;codecs=vp8';
+          
           if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/mp4';
+            // Generic WebM - MediaRecorder will choose codec automatically
+            // Note: This may not include audio if codec isn't specified
+            mimeType = 'video/webm';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = 'video/mp4'; // Last resort - generic MP4
+            }
           }
         }
       }
       
-      console.log('[Recording] Using MIME type:', mimeType, 'Has audio:', hasAudio);
+      const isDirectMP4 = mimeType.startsWith('video/mp4');
+      const hasOpusCodec = mimeType.includes('opus');
+      console.log('[Recording] Using MIME type:', mimeType, 'Has audio:', hasAudio, 'Direct MP4:', isDirectMP4, 'Opus codec:', hasOpusCodec);
       
       const recorder = new MediaRecorder(mediaStream, {
         mimeType: mimeType,
         videoBitsPerSecond: 2500000, // 2.5 Mbps
         audioBitsPerSecond: 128000   // 128 kbps
       });
+      
+      // Verify MediaRecorder is configured to record audio
+      if (hasAudio) {
+        console.log('[Recording] MediaRecorder configured with audio:', {
+          mimeType: mimeType,
+          audioBitsPerSecond: 128000,
+          audioTracksInStream: audioTracks.length,
+          audioTracksEnabled: audioTracks.filter(t => t.enabled).length,
+          audioTracksReady: audioTracks.filter(t => t.readyState === 'live').length
+        });
+        
+        // Double-check audio tracks are actually enabled and live
+        audioTracks.forEach((track, index) => {
+          if (!track.enabled) {
+            console.warn(`[Recording] Audio track ${index} is disabled! Enabling...`);
+            track.enabled = true;
+          }
+          if (track.readyState !== 'live') {
+            console.warn(`[Recording] Audio track ${index} is not live! State:`, track.readyState);
+          }
+        });
+      } else {
+        console.warn('[Recording] MediaRecorder created WITHOUT audio (no audio tracks in stream)');
+      }
       
       // For screen recording, we might need to start with a longer interval
       // or use different settings
@@ -618,19 +915,52 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
           if (result.isWebcam) {
             console.log('[Recording] Camera exposure ready, showing preview and starting recording');
             setStreamReady(true); // Show preview NOW
+            setCameraReady(true); // Camera is ready NOW - do this FIRST to remove opacity:0
             
             // Ensure video element is playing to show preview - use setTimeout to ensure DOM is updated
             setTimeout(() => {
-              if (previewVideoRef.current && previewVideoRef.current.srcObject === mediaStream) {
-                previewVideoRef.current.play().then(() => {
-                  console.log('[Recording] Video preview playing successfully');
-                }).catch(err => {
-                  console.error('[Recording] Error playing video preview:', err);
-                });
+              if (previewVideoRef.current) {
+                const video = previewVideoRef.current;
+                console.log('[Recording] Attempting to play video preview, srcObject:', video.srcObject ? 'set' : 'null');
+                console.log('[Recording] Video paused state:', video.paused);
+                console.log('[Recording] Video readyState:', video.readyState);
+                
+                // CRITICAL: If srcObject is null, set it to the stream FIRST
+                if (!video.srcObject || video.srcObject !== mediaStream) {
+                  console.log('[Recording] Setting srcObject to mediaStream');
+                  video.srcObject = mediaStream;
+                  // Wait for stream to attach before playing
+                  setTimeout(() => {
+                    video.play().then(() => {
+                      console.log('[Recording] Video preview playing successfully after setting srcObject');
+                    }).catch(err => {
+                      console.error('[Recording] Error playing video after setting srcObject:', err);
+                      // Try again after a short delay
+                      setTimeout(() => {
+                        video.play().catch(e => {
+                          console.error('[Recording] Second play attempt failed:', e);
+                        });
+                      }, 100);
+                    });
+                  }, 50);
+                } else {
+                  // srcObject is already set, just play
+                  video.play().then(() => {
+                    console.log('[Recording] Video preview playing successfully');
+                  }).catch(err => {
+                    console.error('[Recording] Error playing video preview:', err);
+                    // Try again after a short delay
+                    setTimeout(() => {
+                      video.play().catch(e => {
+                        console.error('[Recording] Second play attempt failed:', e);
+                      });
+                    }, 100);
+                  });
+                }
+              } else {
+                console.warn('[Recording] previewVideoRef.current is null');
               }
             }, 50);
-            
-            setCameraReady(true); // Camera is ready NOW
           }
           
           // Test if MediaRecorder is actually working
@@ -669,9 +999,26 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       }, cameraDelay);
 
       toast.success('Recording started');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting recording:', error);
-      toast.error('Failed to start recording');
+      
+      // Handle permission errors specifically
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError' || error.message?.includes('permission')) {
+        const isWebcam = settings.videoSource?.type === 'webcam';
+        const needsMic = settings.audioSource;
+        
+        if (isWebcam && needsMic) {
+          toast.error('Camera and microphone access are required. Please grant permissions in System Settings > Privacy & Security.', { duration: 8000 });
+        } else if (isWebcam) {
+          toast.error('Camera access is required. Please grant permissions in System Settings > Privacy & Security > Camera.', { duration: 8000 });
+        } else if (needsMic) {
+          toast.error('Microphone access is required. Please grant permissions in System Settings > Privacy & Security > Microphone.', { duration: 8000 });
+        } else {
+          toast.error('Recording permission denied. Please check System Settings > Privacy & Security.', { duration: 8000 });
+        }
+      } else {
+        toast.error(error.message || 'Failed to start recording', { duration: 5000 });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -712,6 +1059,13 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
       console.log('[Recording] Stopping media stream tracks');
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
+    }
+
+    // Stop microphone stream if it exists (for screen recording)
+    if (micStreamRef.current) {
+      console.log('[Recording] Stopping microphone stream');
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
     }
 
     if (recordingIntervalRef.current) {
@@ -764,7 +1118,7 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
           width: settings.resolution.width,
           height: settings.resolution.height,
           frameRate: settings.frameRate,
-          codec: 'webm',
+          codec: 'mp4',
           fileSize: recordingBlob.size,
           trimStart: 0,
           trimEnd: actualRecordingTime > 0 ? actualRecordingTime : 0, // Use 0 if duration is 0
@@ -1020,11 +1374,26 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
                       style={{ opacity: settings.videoSource?.type === 'webcam' && !cameraReady ? 0 : 1 }}
                       onLoadedMetadata={() => {
                         // Ensure video plays when metadata loads
+                        console.log('[Recording] Video metadata loaded, attempting to play');
                         if (previewVideoRef.current && streamReady) {
-                          previewVideoRef.current.play().catch(err => {
+                          previewVideoRef.current.play().then(() => {
+                            console.log('[Recording] Video playing successfully after metadata load');
+                          }).catch(err => {
                             console.error('[Recording] Error auto-playing video:', err);
                           });
                         }
+                      }}
+                      onCanPlay={() => {
+                        // Additional play attempt when video can play
+                        console.log('[Recording] Video can play, ensuring it plays');
+                        if (previewVideoRef.current && streamReady && previewVideoRef.current.paused) {
+                          previewVideoRef.current.play().catch(err => {
+                            console.error('[Recording] Error playing video on canplay:', err);
+                          });
+                        }
+                      }}
+                      onPlaying={() => {
+                        console.log('[Recording] Video is now playing');
                       }}
                     />
                   )}
@@ -1133,3 +1502,4 @@ const RecordingPanel: React.FC<RecordingPanelProps> = ({ isOpen, onClose }) => {
 };
 
 export default RecordingPanel;
+

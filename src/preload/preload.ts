@@ -63,6 +63,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveRecording: (arrayBuffer: ArrayBuffer): Promise<{ success: boolean; filePath?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_RECORDING, arrayBuffer),
 
+  requestMediaPermissions: (params: { mic?: boolean; camera?: boolean }): Promise<{ success: boolean; granted?: { microphone: boolean; camera: boolean }; status?: any; denied?: string[]; needsGrant?: string[]; platform?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.REQUEST_MEDIA_PERMISSIONS, params),
+
   // Listen for events from main process
   onImportVideos: (callback: (filePaths: string[]) => void) => 
     ipcRenderer.on('import-videos', (_, filePaths) => callback(filePaths)),
@@ -106,6 +109,7 @@ declare global {
       getRecordingSources: () => Promise<{ success: boolean; sources?: any[]; error?: string }>;
       startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }) => Promise<{ success: boolean; constraints?: any; isWebcam?: boolean; error?: string }>;
       saveRecording: (arrayBuffer: ArrayBuffer) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      requestMediaPermissions: (params: { mic?: boolean; camera?: boolean }) => Promise<{ success: boolean; granted?: { microphone: boolean; camera: boolean }; status?: any; denied?: string[]; needsGrant?: string[]; platform?: string; error?: string }>;
       onImportVideos: (callback: (filePaths: string[]) => void) => void;
       onTriggerExport: (callback: () => void) => void;
       onExportProgress: (callback: (progress: { progress: number; currentStep: string }) => void) => void;

@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, dialog, app } from 'electron';
+import { ipcMain, BrowserWindow, dialog, app, shell } from 'electron';
 import { 
   ImportVideosRequest, 
   ImportVideosResponse, 
@@ -340,6 +340,11 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
       const { writeFile } = require('fs/promises');
       const { join } = require('path');
       const { app } = require('electron');
+      const ffmpeg = require('fluent-ffmpeg');
+      const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+      
+      // Set FFmpeg path
+      ffmpeg.setFfmpegPath(ffmpegInstaller.path);
       
       // Create recordings directory if it doesn't exist
       const recordingsDir = join(app.getPath('userData'), 'recordings');
@@ -347,21 +352,365 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
       
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `recording-${timestamp}.webm`;
-      const filePath = join(recordingsDir, filename);
       
-      // Write the array buffer to file
-      await writeFile(filePath, Buffer.from(arrayBuffer));
+      // Detect if the blob is already MP4 by checking the first bytes
+      // MP4 files start with specific box signatures
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const isMP4 = uint8Array.length >= 8 && 
+        (uint8Array[4] === 0x66 && uint8Array[5] === 0x74 && uint8Array[6] === 0x79 && uint8Array[7] === 0x70) || // ftyp box
+        (uint8Array[0] === 0x00 && uint8Array[1] === 0x00 && uint8Array[2] === 0x00 && uint8Array[3] === 0x18); // MP4 box size
       
-      return {
-        success: true,
-        filePath
-      };
+      if (isMP4) {
+        // Already MP4 - save directly, but still check/verify audio
+        console.log('[Recording Handler] Recording is already MP4 format');
+        const finalMp4Path = join(recordingsDir, `recording-${timestamp}.mp4`);
+        await writeFile(finalMp4Path, Buffer.from(arrayBuffer));
+        
+        // Verify audio with ffprobe
+        const hasAudio = await new Promise<boolean>((resolve) => {
+          ffmpeg.ffprobe(finalMp4Path, (err: any, metadata: any) => {
+            if (err) {
+              console.warn('[Recording Handler] Could not probe MP4 file:', err);
+              resolve(false);
+              return;
+            }
+            
+            const audioStream = metadata.streams?.some((stream: any) => stream.codec_type === 'audio');
+            console.log('[Recording Handler] MP4 file has audio:', audioStream);
+            resolve(audioStream);
+          });
+        });
+        
+        if (!hasAudio) {
+          // MP4 file has no audio - re-encode to add silent audio
+          console.log('[Recording Handler] MP4 has no audio, re-encoding to add silent audio');
+          const tempMp4Path = join(recordingsDir, `recording-${timestamp}-temp.mp4`);
+          await writeFile(tempMp4Path, Buffer.from(arrayBuffer));
+          
+          return new Promise((resolve) => {
+            ffmpeg(tempMp4Path)
+              .input('anullsrc=channel_layout=stereo:sample_rate=48000')
+              .inputOptions(['-f', 'lavfi'])
+              .outputOptions([
+                '-c:v copy', // Copy video stream (no re-encoding)
+                '-c:a aac',
+                '-b:a 128k',
+                '-shortest',
+                '-movflags +faststart'
+              ])
+              .output(finalMp4Path)
+              .on('end', () => {
+                console.log('[Recording Handler] Successfully added silent audio to MP4');
+                require('fs/promises').unlink(tempMp4Path).catch(() => {});
+                resolve({
+                  success: true,
+                  filePath: finalMp4Path
+                });
+              })
+              .on('error', (err: any) => {
+                console.error('[Recording Handler] Re-encoding error:', err);
+                // Return original MP4 if re-encoding fails
+                resolve({
+                  success: true,
+                  filePath: finalMp4Path
+                });
+              })
+              .run();
+          });
+        }
+        
+        return {
+          success: true,
+          filePath: finalMp4Path
+        };
+      }
+      
+      // WebM format - save temporarily and re-encode to MP4
+      const tempWebmPath = join(recordingsDir, `recording-${timestamp}.webm`);
+      await writeFile(tempWebmPath, Buffer.from(arrayBuffer));
+      
+      console.log('[Recording Handler] Saved temporary WebM file:', tempWebmPath);
+      
+      // Probe the video file to get its properties
+      const videoMetadata = await new Promise<any>((resolve, reject) => {
+        ffmpeg.ffprobe(tempWebmPath, (err: any, metadata: any) => {
+          if (err) {
+            console.warn('[Recording Handler] Could not probe WebM file:', err);
+            reject(err);
+            return;
+          }
+          resolve(metadata);
+        });
+      });
+      
+      // Extract video stream info
+      const videoStream = videoMetadata.streams?.find((s: any) => s.codec_type === 'video');
+      const audioStream = videoMetadata.streams?.find((s: any) => s.codec_type === 'audio');
+      const hasAudio = !!audioStream;
+      
+      console.log('[Recording Handler] WebM file has audio:', hasAudio);
+      console.log('[Recording Handler] Video stream info:', {
+        width: videoStream?.width,
+        height: videoStream?.height,
+        codec: videoStream?.codec_name,
+        pixelFormat: videoStream?.pix_fmt,
+        framerate: videoStream?.r_frame_rate
+      });
+      
+      if (!videoStream) {
+        throw new Error('No video stream found in WebM file');
+      }
+      
+      // Re-encode to MP4 with audio preservation
+      const finalMp4Path = join(recordingsDir, `recording-${timestamp}.mp4`);
+      
+      return new Promise((resolve, reject) => {
+        let command = ffmpeg(tempWebmPath);
+        
+        // Set video codec and ensure compatibility
+        const outputOptions: string[] = [
+          '-c:v libx264',
+          '-preset medium',
+          '-crf 23',
+          '-pix_fmt yuv420p', // Ensure YUV420P for compatibility
+          '-movflags +faststart'
+        ];
+        
+        // Add explicit video filter if dimensions are odd (H.264 requires even dimensions)
+        // IMPORTANT: Build filter chain properly - scale filter must come before other operations
+        let videoFilter = '';
+        if (videoStream.width && videoStream.height) {
+          const width = videoStream.width;
+          const height = videoStream.height;
+          
+          // H.264 requires even dimensions - fix if odd
+          if (width % 2 !== 0 || height % 2 !== 0) {
+            const evenWidth = Math.floor(width / 2) * 2;
+            const evenHeight = Math.floor(height / 2) * 2;
+            videoFilter = `scale=${evenWidth}:${evenHeight}`;
+            console.log('[Recording Handler] Adjusting dimensions to even values:', { original: { width, height }, adjusted: { evenWidth, evenHeight } });
+          }
+        }
+        
+        if (hasAudio) {
+          // Preserve audio if present - explicitly map video and audio streams
+          if (videoFilter) {
+            outputOptions.push(`-vf ${videoFilter}`);
+          }
+          outputOptions.push(
+            '-c:a aac',
+            '-b:a 128k',
+            '-map 0:v:0', // Map first video stream
+            '-map 0:a:0'  // Map first audio stream
+          );
+          command
+            .outputOptions(outputOptions)
+            .output(finalMp4Path)
+            .on('start', (commandLine: string) => {
+              console.log('[Recording Handler] FFmpeg command:', commandLine);
+            })
+            .on('progress', (progress: any) => {
+              console.log('[Recording Handler] FFmpeg progress:', progress.percent || 'unknown');
+            })
+            .on('end', () => {
+              console.log('[Recording Handler] Successfully re-encoded to MP4 with audio');
+              // Delete temporary WebM file
+              require('fs/promises').unlink(tempWebmPath).catch((err: any) => {
+                console.warn('[Recording Handler] Could not delete temp WebM file:', err);
+              });
+              
+              resolve({
+                success: true,
+                filePath: finalMp4Path
+              });
+            })
+            .on('error', (err: any) => {
+              console.error('[Recording Handler] FFmpeg re-encoding error:', err);
+              console.error('[Recording Handler] FFmpeg error message:', err.message);
+              console.error('[Recording Handler] FFmpeg stderr:', err);
+              // Fallback: return WebM file if re-encoding fails
+              resolve({
+                success: true,
+                filePath: tempWebmPath
+              });
+            })
+            .run();
+        } else {
+          // No audio - just re-encode video, add silent audio
+          if (videoFilter) {
+            outputOptions.push(`-vf ${videoFilter}`);
+          }
+          command
+            .input('anullsrc=channel_layout=stereo:sample_rate=48000')
+            .inputOptions(['-f', 'lavfi'])
+            .outputOptions([
+              ...outputOptions,
+              '-c:a aac',
+              '-b:a 128k',
+              '-shortest',
+              '-map 0:v:0', // Map video from first input (WebM)
+              '-map 1:a:0'  // Map audio from second input (silent audio)
+            ])
+            .output(finalMp4Path)
+            .on('start', (commandLine: string) => {
+              console.log('[Recording Handler] FFmpeg command:', commandLine);
+            })
+            .on('progress', (progress: any) => {
+              console.log('[Recording Handler] FFmpeg progress:', progress.percent || 'unknown');
+            })
+            .on('end', () => {
+              console.log('[Recording Handler] Successfully re-encoded to MP4 with silent audio');
+              // Delete temporary WebM file
+              require('fs/promises').unlink(tempWebmPath).catch((err: any) => {
+                console.warn('[Recording Handler] Could not delete temp WebM file:', err);
+              });
+              
+              resolve({
+                success: true,
+                filePath: finalMp4Path
+              });
+            })
+            .on('error', (err: any) => {
+              console.error('[Recording Handler] FFmpeg re-encoding error:', err);
+              console.error('[Recording Handler] FFmpeg error message:', err.message);
+              console.error('[Recording Handler] FFmpeg stderr:', err);
+              // Fallback: return WebM file if re-encoding fails
+              resolve({
+                success: true,
+                filePath: tempWebmPath
+              });
+            })
+            .run();
+        }
+      });
     } catch (error) {
       console.error('Error saving recording:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to save recording'
+      };
+    }
+  });
+  
+  // Request media permissions handler
+  ipcMain.handle(IPC_CHANNELS.REQUEST_MEDIA_PERMISSIONS, async (_, { mic, camera }: { mic?: boolean; camera?: boolean }) => {
+    try {
+      const permissions: string[] = [];
+      if (mic) permissions.push('microphone');
+      if (camera) permissions.push('camera');
+      
+      // On macOS, request system permissions
+      if (process.platform === 'darwin') {
+        const { systemPreferences } = require('electron');
+        
+        const results: { [key: string]: string } = {};
+        const granted: { [key: string]: boolean } = {
+          microphone: false,
+          camera: false
+        };
+        
+        // Request microphone permission if needed
+        if (mic) {
+          const currentStatus = systemPreferences.getMediaAccessStatus('microphone');
+          console.log('[Permissions] Microphone current status:', currentStatus);
+          
+          if (currentStatus === 'granted') {
+            results.microphone = 'granted';
+            granted.microphone = true;
+          } else if (currentStatus === 'denied') {
+            results.microphone = 'denied';
+            granted.microphone = false;
+          } else {
+            // Not determined - request permission
+            console.log('[Permissions] Requesting microphone access...');
+            try {
+              const micGranted = await systemPreferences.askForMediaAccess('microphone');
+              results.microphone = micGranted ? 'granted' : 'denied';
+              granted.microphone = micGranted;
+              console.log('[Permissions] Microphone access granted:', micGranted);
+            } catch (err) {
+              console.error('[Permissions] Error requesting microphone access:', err);
+              results.microphone = 'error';
+              granted.microphone = false;
+            }
+          }
+        }
+        
+        // Request camera permission if needed
+        if (camera) {
+          const currentStatus = systemPreferences.getMediaAccessStatus('camera');
+          console.log('[Permissions] Camera current status:', currentStatus);
+          
+          if (currentStatus === 'granted') {
+            results.camera = 'granted';
+            granted.camera = true;
+          } else if (currentStatus === 'denied') {
+            results.camera = 'denied';
+            granted.camera = false;
+          } else {
+            // Not determined - request permission
+            console.log('[Permissions] Requesting camera access...');
+            try {
+              const camGranted = await systemPreferences.askForMediaAccess('camera');
+              results.camera = camGranted ? 'granted' : 'denied';
+              granted.camera = camGranted;
+              console.log('[Permissions] Camera access granted:', camGranted);
+            } catch (err) {
+              console.error('[Permissions] Error requesting camera access:', err);
+              results.camera = 'error';
+              granted.camera = false;
+            }
+          }
+        }
+        
+        // Check if any permissions are denied or had errors
+        const denied: string[] = [];
+        const needsGrant: string[] = [];
+        
+        if (mic) {
+          if (results.microphone === 'denied' || results.microphone === 'error') {
+            denied.push('microphone');
+          } else if (results.microphone !== 'granted') {
+            needsGrant.push('microphone');
+          }
+        }
+        
+        if (camera) {
+          if (results.camera === 'denied' || results.camera === 'error') {
+            denied.push('camera');
+          } else if (results.camera !== 'granted') {
+            needsGrant.push('camera');
+          }
+        }
+        
+        return {
+          success: denied.length === 0 && needsGrant.length === 0 && (mic ? granted.microphone : true) && (camera ? granted.camera : true),
+          granted: {
+            microphone: granted.microphone,
+            camera: granted.camera
+          },
+          status: results,
+          denied,
+          needsGrant,
+          platform: 'darwin'
+        };
+      }
+      
+      // For other platforms, just return success
+      // Permissions will be requested when getUserMedia is called
+      return {
+        success: true,
+        granted: {
+          microphone: mic || false,
+          camera: camera || false
+        },
+        platform: process.platform
+      };
+    } catch (error) {
+      console.error('[Permissions] Error checking permissions:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to check permissions'
       };
     }
   });

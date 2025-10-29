@@ -565,7 +565,24 @@
 
 **COMPLETED PRD-2 FEATURES (5/12)**:
 1. ✅ **Recording Features** (Screen + Webcam + Audio) - COMPLETE
+   - ✅ Screen recording with desktopCapturer API
+   - ✅ Webcam recording with getUserMedia
+   - ✅ Audio capture from microphone
+   - ✅ Real-time timer display working correctly
+   - ✅ Camera initialization with 600ms delay for exposure adjustment
+   - ✅ Loading spinner during camera initialization
+   - ✅ Auto-import recordings to media library
+   - ✅ WebM recording with chunk management
+   - ✅ Audio track detection and verification
+   - ✅ MIME type includes opus codec when audio tracks present
+   - ⚠️ **KNOWN ISSUES**: Camera preview shows black screen during recording (investigating), audio recorded but not playing (investigating)
 2. ✅ **Undo/Redo Functionality** - COMPLETE
+   - ✅ Command pattern with state snapshots
+   - ✅ 50-action history limit
+   - ✅ Memory optimized with state diffs
+   - ✅ Cmd+Z / Cmd+Shift+Z keyboard shortcuts
+   - ✅ Visual indicators for undo/redo availability
+   - ✅ Full integration with timeline operations
 3. ✅ **Keyboard Shortcuts** (15+ shortcuts) - COMPLETE
 4. ✅ **Auto-Save on Force Quit** - COMPLETE
 5. ✅ **Cloud Export & Sharing** - COMPLETE
@@ -580,6 +597,8 @@
 12. ❌ **Text Overlays** - NOT IMPLEMENTED
 
 **Next Priorities**:
+- Fix camera preview black screen issue
+- Fix audio playback in recorded videos
 - Multi-track timeline with picture-in-picture (CRITICAL)
 - Advanced timeline features (zoom, snap-to-grid)
 - Enhanced media library with metadata

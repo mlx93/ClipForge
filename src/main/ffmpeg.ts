@@ -109,15 +109,28 @@ export const exportTimeline = async (
       
       // If clip has no audio, generate silent audio track
       if (!clipsWithAudio[index]) {
-        const clipDuration = clip.trimEnd > 0 
-          ? clip.trimEnd - clip.trimStart 
-          : (clip.duration - clip.trimStart);
+        // Calculate the actual duration we need for this clip
+        let clipDuration: number;
+        if (clip.trimEnd > 0) {
+          // Trimmed clip: use trimmed duration
+          clipDuration = clip.trimEnd - clip.trimStart;
+        } else if (clip.trimStart > 0) {
+          // Only start trimmed: use remaining duration
+          clipDuration = clip.duration - clip.trimStart;
+        } else {
+          // No trimming: use full duration
+          clipDuration = clip.duration;
+        }
+        
+        console.log(`[FFmpeg Export] Generating silent audio for clip ${index}, duration: ${clipDuration}s`);
         
         // Generate silent audio using anullsrc filter
+        // Note: anullsrc generates infinite silent audio, so we use -t to limit duration
         command.input('anullsrc=channel_layout=stereo:sample_rate=48000')
-          .inputOptions(['-f', 'lavfi', '-t', clipDuration.toString()]);
+          .inputOptions(['-f', 'lavfi', '-t', Math.max(0.1, clipDuration).toFixed(3)]);
         
         silentAudioInputIndices.set(index, nextInputIndex);
+        console.log(`[FFmpeg Export] Silent audio for clip ${index} will be at input index ${nextInputIndex}`);
         nextInputIndex++;
       }
     });
@@ -163,6 +176,10 @@ export const exportTimeline = async (
       
       // Build the complete filter chain
       let filterChain = `${filterInputs.join('')}${filterConcat}`;
+      
+      console.log('[FFmpeg Export] Filter chain:', filterChain);
+      console.log('[FFmpeg Export] Clips with audio:', clipsWithAudio);
+      console.log('[FFmpeg Export] Silent audio indices:', Array.from(silentAudioInputIndices.entries()));
       
       // If scaling is needed, add it to the filter chain
       if (scaleFilter) {
@@ -276,6 +293,7 @@ export const exportTimeline = async (
     // Start event
     command.on('start', (commandLine: any) => {
       console.log('[FFmpeg] Started export');
+      console.log('[FFmpeg] Command:', commandLine);
       onProgress({
         progress: 1,
         currentStep: 'Starting FFmpeg...'
@@ -304,7 +322,11 @@ export const exportTimeline = async (
     });
 
     // Start encoding
-    command.run();
+    command
+      .on('stderr', (stderrLine: string) => {
+        console.log('[FFmpeg stderr]', stderrLine);
+      })
+      .run();
   });
 };
 
