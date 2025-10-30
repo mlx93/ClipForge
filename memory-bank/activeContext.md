@@ -120,6 +120,14 @@
 - File upload: ✅ Working (resumable uploads with progress)
 - Share links: ✅ Working (generated and displayed correctly)
 - UI polish: ✅ Complete (black text, close button, proper layout)
+- Video metadata: ✅ Added (ffprobe extracts video info for Google Drive)
+- Error handling: ✅ Enhanced (detailed error messages for better debugging)
+
+**Issues Fixed in This Session**:
+1. Google blocks Electron user agents → Fixed by opening OAuth in external browser
+2. "Internal Error" messages → Enhanced error handling with detailed messages
+3. Video format incompatibility → Added video metadata extraction with ffprobe
+4. Google OAuth credentials in documentation → Replaced with placeholders
 
 ## Previous Work Session (December 19, 2024)
 

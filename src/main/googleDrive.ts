@@ -265,9 +265,27 @@ export const uploadFileToDrive = async (
     client.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth: client });
     
-    // Create file metadata
+    // Get file metadata using ffprobe
+    const ffmpeg = require('fluent-ffmpeg');
+    const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+    ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+    
+    const ffprobe = require('util').promisify(ffmpeg.ffprobe);
+    const videoInfo = await ffprobe(filePath);
+    const videoStream = videoInfo.streams.find((s: any) => s.codec_type === 'video');
+    
+    // Create comprehensive file metadata for Google Drive
     const fileMetadata = {
-      name: fileName
+      name: fileName,
+      mimeType: 'video/mp4',
+      // Add video-specific metadata
+      properties: {
+        'videoCodec': videoStream?.codec_name || 'unknown',
+        'videoWidth': videoStream?.width || 0,
+        'videoHeight': videoStream?.height || 0,
+        'videoFrameRate': videoStream?.r_frame_rate || 'unknown',
+        'duration': videoInfo.format?.duration || 0
+      }
     };
     
     // Upload file using resumable upload for better progress tracking
@@ -325,7 +343,32 @@ export const uploadFileToDrive = async (
     return { fileId, shareUrl };
   } catch (error) {
     console.error('[Google Drive] Upload failed:', error);
-    throw error;
+    
+    // Provide better error messages based on error type
+    if (error instanceof Error) {
+      console.error('[Google Drive] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      // Check for common error conditions
+      if (error.message.includes('Not authenticated')) {
+        throw new Error('Not authenticated. Please sign in to Google Drive.');
+      }
+      
+      if (error.message.includes('ENOENT')) {
+        throw new Error('Video file not found. Please export the video first.');
+      }
+      
+      if (error.message.includes('network') || error.message.includes('ECONNREFUSED')) {
+        throw new Error('Network error. Please check your internet connection.');
+      }
+      
+      throw new Error(`Upload failed: ${error.message}`);
+    }
+    
+    throw new Error('Upload failed due to an unknown error');
   }
 };
 
