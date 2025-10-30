@@ -2,27 +2,48 @@
 
 A production-grade desktop video editor for macOS built with Electron, React, and TypeScript.
 
-**Version**: 2.0.0
+**Version**: 2.2.0
 
 ## Features
 
 ### ✅ Core Video Editing
 - **Import Videos**: Drag & drop or file picker for MP4, MOV, AVI, MKV, WebM
 - **Timeline Editor**: Fabric.js-based timeline with visual clips, playhead, and zoom
-- **Video Preview**: HTML5 video player synced with timeline
-- **Trim & Split**: Visual trim handles with precision snapping and split functionality
-- **Export**: FFmpeg-based multi-clip export with real-time progress tracking
+- **Video Preview**: HTML5 video player synced with timeline (60fps playback, seamless multi-clip transitions)
+- **Trim & Split**: Visual trim handles with precision snapping (0.1s) and split functionality
+- **Export**: FFmpeg-based multi-clip export with real-time progress tracking and time estimates
 - **Media Library Metadata**: Displays duration, resolution, file size, codec, and frame rate for all clips
+- **Project Management**: Save/load `.simplecut` project files with full timeline state
 
-### ✅ User Experience
-- **Native macOS App**: Electron-based with native file dialogs
-- **Keyboard Shortcuts**: Space (play/pause), Arrow keys (seek), S (split), Cmd+Plus/Minus (zoom), Tab (clip selection)
+### ✅ Recording Features
+- **Screen Recording**: Capture screen with desktopCapturer API
+- **Webcam Recording**: Built-in camera recording with getUserMedia
+- **Audio Capture**: Microphone audio recording with AudioContext
+- **Real-time Timer**: Live recording duration display
+- **Auto-Import**: Recordings automatically added to media library
+
+### ✅ Productivity Features
+- **Undo/Redo**: 50-action history with command pattern
+- **Keyboard Shortcuts**: Comprehensive shortcuts (Space, Arrow keys, S, Cmd+Plus/Minus, Tab, etc.)
+- **Auto-Save**: 2-minute auto-save with session recovery
+- **Crash Recovery**: Automatic session recovery after unexpected shutdowns
 - **Thumbnail Previews**: Auto-generated video thumbnails in media library
 - **Hover Previews**: Video frame previews on media library hover
 - **Export Time Estimates**: Real-time progress with time remaining calculations
-- **Crash Recovery**: Automatic session recovery after unexpected shutdowns
-- **Responsive UI**: Tailwind CSS with dark theme
+
+### ✅ Cloud Export (v2.2)
+- **Google Drive Integration**: Direct upload to Google Drive with OAuth authentication
+- **Shareable Links**: Generate shareable links for uploaded videos
+- **Progress Tracking**: Real-time upload progress indicators
+- **Secure Authentication**: Browser-based OAuth with token storage
+- **Video Metadata**: Automatic metadata extraction for Drive compatibility
+
+### ✅ User Experience
+- **Native macOS App**: Electron-based with native file dialogs
+- **Responsive UI**: Tailwind CSS with modern dark theme
 - **Memory Efficient**: Stream-based processing, file path storage
+- **DMG Installation**: Improved DMG layout with Applications link
+- **Toast Notifications**: Non-blocking user feedback with react-hot-toast
 
 ## Installation
 
@@ -42,8 +63,10 @@ npm run dev
 ### Production (macOS)
 
 Download the latest release from [GitHub Releases](https://github.com/mlx93/ClipForge/releases):
-- `SimpleCut-2.0.0.dmg` - Intel Mac
-- `SimpleCut-2.0.0-arm64.dmg` - Apple Silicon Mac
+- `SimpleCut-2.2.0.dmg` - Intel Mac
+- `SimpleCut-2.2.0-arm64.dmg` - Apple Silicon Mac
+
+**Latest Version**: v2.2.0 - Google Drive Integration
 
 #### First-Time Installation on macOS
 
@@ -152,12 +175,13 @@ SimpleCut saves your editing sessions as `.simplecut` project files. These files
 ### Application Structure
 
 ```
-SimpleCut/
+ClipForge/
 ├── src/
 │   ├── main/                    # Electron Main Process (Node.js)
 │   │   ├── index.ts            # App lifecycle, window management
 │   │   ├── ffmpeg.ts           # Video encoding, export, trim operations
 │   │   ├── fileSystem.ts       # Video import, metadata extraction
+│   │   ├── googleDrive.ts      # Google Drive OAuth and upload
 │   │   ├── ipc/handlers.ts     # IPC communication with renderer
 │   │   └── menu.ts             # Native application menu
 │   ├── renderer/                # Renderer Process (React/Browser)
@@ -167,21 +191,26 @@ SimpleCut/
 │   │   │   ├── VideoPreview.tsx # HTML5 video player
 │   │   │   ├── MediaLibrary.tsx # Imported clips panel
 │   │   │   ├── ExportDialog.tsx # Export settings modal
+│   │   │   ├── RecordingPanel.tsx # Screen/webcam recording
+│   │   │   ├── CloudExport.tsx # Google Drive upload
 │   │   │   └── ProjectMenu.tsx  # Save/load UI
 │   │   ├── store/
 │   │   │   ├── timelineStore.ts # Timeline state (clips, playhead, zoom)
 │   │   │   ├── exportStore.ts   # Export progress, settings
 │   │   │   ├── projectStore.ts  # Project save/load state
-│   │   │   └── mediaLibraryStore.ts # Imported clips library
+│   │   │   ├── recordingStore.ts # Recording state management
+│   │   │   ├── historyStore.ts  # Undo/redo history
+│   │   │   └── googleDriveStore.ts # Google Drive state
 │   │   └── utils/              # Shared utilities
 │   ├── preload/
 │   │   └── preload.ts          # Secure IPC bridge (contextBridge)
 │   └── shared/
 │       ├── types.ts            # Shared TypeScript interfaces
 │       └── constants.ts        # Shared constants, IPC channels
+├── designDocs/                  # Design documents and specifications
 ├── docs/                        # Technical documentation
 ├── memory-bank/                 # Project memory/context files
-└── release/                     # Built app packages (DMG, EXE)
+└── release/                     # Built app packages (DMG files)
 ```
 
 ### Process Architecture
