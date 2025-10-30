@@ -178,35 +178,35 @@ SimpleCut saves your editing sessions as `.simplecut` project files. These files
 ClipForge/
 ├── src/
 │   ├── main/                    # Electron Main Process (Node.js)
-│   │   ├── index.ts            # App lifecycle, window management
-│   │   ├── ffmpeg.ts           # Video encoding, export, trim operations
-│   │   ├── fileSystem.ts       # Video import, metadata extraction
-│   │   ├── googleDrive.ts      # Google Drive OAuth and upload
-│   │   ├── ipc/handlers.ts     # IPC communication with renderer
-│   │   └── menu.ts             # Native application menu
+│   │   ├── index.ts             # App lifecycle, window management
+│   │   ├── ffmpeg.ts            # Video encoding, export, trim operations
+│   │   ├── fileSystem.ts        # Video import, metadata extraction
+│   │   ├── googleDrive.ts       # Google Drive OAuth and upload
+│   │   ├── ipc/handlers.ts      # IPC communication with renderer
+│   │   └── menu.ts              # Native application menu
 │   ├── renderer/                # Renderer Process (React/Browser)
-│   │   ├── App.tsx             # Root component, import handlers
+│   │   ├── App.tsx              # Root component, import handlers
 │   │   ├── components/
-│   │   │   ├── Timeline.tsx    # Fabric.js timeline editor
+│   │   │   ├── Timeline.tsx     # Fabric.js timeline editor
 │   │   │   ├── VideoPreview.tsx # HTML5 video player
 │   │   │   ├── MediaLibrary.tsx # Imported clips panel
 │   │   │   ├── ExportDialog.tsx # Export settings modal
 │   │   │   ├── RecordingPanel.tsx # Screen/webcam recording
-│   │   │   ├── CloudExport.tsx # Google Drive upload
+│   │   │   ├── CloudExport.tsx  # Google Drive upload
 │   │   │   └── ProjectMenu.tsx  # Save/load UI
 │   │   ├── store/
-│   │   │   ├── timelineStore.ts # Timeline state (clips, playhead, zoom)
-│   │   │   ├── exportStore.ts   # Export progress, settings
-│   │   │   ├── projectStore.ts  # Project save/load state
-│   │   │   ├── recordingStore.ts # Recording state management
-│   │   │   ├── historyStore.ts  # Undo/redo history
+│   │   │   ├── timelineStore.ts    # Timeline state (clips, playhead, zoom)
+│   │   │   ├── exportStore.ts      # Export progress, settings
+│   │   │   ├── projectStore.ts     # Project save/load state
+│   │   │   ├── recordingStore.ts   # Recording state management
+│   │   │   ├── historyStore.ts     # Undo/redo history
 │   │   │   └── googleDriveStore.ts # Google Drive state
-│   │   └── utils/              # Shared utilities
+│   │   └── utils/               # Shared utilities
 │   ├── preload/
-│   │   └── preload.ts          # Secure IPC bridge (contextBridge)
+│   │   └── preload.ts           # Secure IPC bridge (contextBridge)
 │   └── shared/
-│       ├── types.ts            # Shared TypeScript interfaces
-│       └── constants.ts        # Shared constants, IPC channels
+│       ├── types.ts             # Shared TypeScript interfaces
+│       └── constants.ts         # Shared constants, IPC channels
 ├── designDocs/                  # Design documents and specifications
 ├── docs/                        # Technical documentation
 ├── memory-bank/                 # Project memory/context files
@@ -289,43 +289,44 @@ MIT License - see LICENSE file for details.
 3. Make your changes
 4. Submit a pull request
 
-## Roadmap
+## All Features (Working)
 
-### ✅ MVP Complete (v2.0.0)
+### Video Editing
 - ✅ Video import (drag & drop, file picker)
-- ✅ Timeline editing with Fabric.js and zoom
-- ✅ Trim and split functionality with precision snapping
+- ✅ Timeline editing with Fabric.js and zoom (0.5x to 8x)
+- ✅ Trim and split functionality with precision snapping (0.1s)
 - ✅ Multi-clip export with FFmpeg
 - ✅ Project save/load (.simplecut files)
+- ✅ Real-time video preview with 60fps playback
+- ✅ Seamless multi-clip transitions
+
+### Recording
+- ✅ Screen recording (desktopCapturer API)
+- ✅ Webcam recording with camera initialization
+- ✅ Microphone audio capture with AudioContext
+- ✅ Real-time recording timer display
+- ✅ Auto-import recordings to media library
+
+### User Experience
 - ✅ Thumbnail generation for media library
-- ✅ Keyboard shortcuts and navigation
-- ✅ Video hover previews
-- ✅ Export time estimation
+- ✅ Video hover previews in media library
+- ✅ Keyboard shortcuts and navigation (15+ shortcuts)
+- ✅ Export time estimation and progress tracking
 - ✅ Media library metadata display (duration, resolution, file size, codec, frame rate)
 - ✅ Crash recovery (automatic session recovery)
-- ✅ Screen recording (screen + webcam + audio)
 - ✅ Undo/redo functionality (50-action history)
-- ✅ Auto-save on force quit
+- ✅ Auto-save on force quit (2-minute interval)
+- ✅ Toast notifications for user feedback
 - ✅ Native macOS packaging (DMG)
 
-### 🚀 Planned Features (Post-MVP)
-- [ ] **Visual Trim Indicators**:
-  - [ ] Gray overlay for trimmed regions
-  - [ ] Visual feedback for trim boundaries
+### Cloud Export (v2.2)
+- ✅ Google Drive OAuth integration
+- ✅ Direct video upload to Google Drive
+- ✅ Shareable link generation
+- ✅ Upload progress tracking
+- ✅ Video metadata extraction for Drive compatibility
 
-- [ ] **PRD-2 Features**:
-  - [ ] Screen recording (desktopCapturer API)
-  - [ ] Webcam recording
-  - [ ] Advanced timeline (multi-track, PiP)
-  - [ ] Transitions and effects
-  - [ ] Undo/redo functionality
-
-- [ ] **PRD-3 Features**:
-  - [ ] AI-powered subtitles
-  - [ ] Auto-captions with OpenAI/Whisper
-  - [ ] Timeline text overlays
-
-See [PRD-2-Full-Features.md](./PRD-2-Full-Features.md) and [PRD-3-AI-Captions.md](./PRD-3-AI-Captions.md) for detailed specifications.
+See [PRD-2-Full-Features.md](./PRD-2-Full-Features.md) and [PRD-3-AI-Captions.md](./PRD-3-AI-Captions.md) for future feature specifications.
 
 ---
 
