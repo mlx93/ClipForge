@@ -34,7 +34,32 @@
     "entitlementsInherit": "build/entitlements.mac.plist",
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
-    "notarize": false
+    "notarize": false,
+    "icon": "assets/icon.icns",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "assets/icon.icns",
+      "iconSize": 100,
+      "contents": [
+        {
+          "x": 380,
+          "y": 280,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 110,
+          "y": 280,
+          "type": "file"
+        }
+      ],
+      "background": null,
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
   },
   "win": {
     "target": "nsis"
