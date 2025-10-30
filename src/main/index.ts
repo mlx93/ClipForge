@@ -3,6 +3,10 @@ import { join } from 'path';
 import { isDev } from './utils';
 import { setupIpcHandlers } from './ipc/handlers';
 import { createApplicationMenu } from './menu';
+import * as dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 // Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;

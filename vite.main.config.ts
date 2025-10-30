@@ -43,7 +43,11 @@ export default defineConfig({
         'cluster',
         'worker_threads',
         '@ffmpeg-installer/ffmpeg',
-        'fluent-ffmpeg'
+        'fluent-ffmpeg',
+        'googleapis',
+        'google-auth-library',
+        'googleapis-common',
+        'google-auth-library/build/src/transport/http2'
       ]
     },
     target: 'node18',

@@ -13,6 +13,14 @@ import { IPC_CHANNELS } from '@shared/constants';
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import { 
+  isAuthenticated, 
+  initiateGoogleAuth, 
+  handleOAuthCallback, 
+  signOut, 
+  uploadFileToDrive,
+  getAccessToken
+} from '../googleDrive';
 
 export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
   // Import videos handler
@@ -894,6 +902,82 @@ export const setupIpcHandlers = (mainWindow: BrowserWindow): void => {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to check permissions'
+      };
+    }
+  });
+
+  // Google Drive OAuth handlers
+  ipcMain.handle(IPC_CHANNELS.GOOGLE_DRIVE_INITIATE_AUTH, async () => {
+    try {
+      const { authUrl } = await initiateGoogleAuth(mainWindow);
+      return { success: true, authUrl };
+    } catch (error) {
+      console.error('[IPC] Google Drive initiate auth error:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to initiate Google Drive authentication' 
+      };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GOOGLE_DRIVE_CHECK_AUTH, async () => {
+    try {
+      const authenticated = await isAuthenticated();
+      return { authenticated };
+    } catch (error) {
+      console.error('[IPC] Google Drive check auth error:', error);
+      return { authenticated: false };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GOOGLE_DRIVE_SIGN_OUT, async () => {
+    try {
+      await signOut();
+      return { success: true };
+    } catch (error) {
+      console.error('[IPC] Google Drive sign out error:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to sign out' 
+      };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GOOGLE_DRIVE_UPLOAD, async (_, { filePath, fileName }: { filePath: string; fileName: string }) => {
+    try {
+      const result = await uploadFileToDrive(filePath, fileName, (progress) => {
+        // Send progress updates to renderer
+        mainWindow.webContents.send(IPC_CHANNELS.GOOGLE_DRIVE_PROGRESS, { progress });
+      });
+      
+      return {
+        success: true,
+        fileId: result.fileId,
+        shareUrl: result.shareUrl
+      };
+    } catch (error) {
+      console.error('[IPC] Google Drive upload error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Upload failed'
+      };
+    }
+  });
+
+  // Handle OAuth callback code from browser redirect
+  ipcMain.handle('google-drive-handle-callback', async (_, code: string) => {
+    try {
+      const result = await handleOAuthCallback(code);
+      if (result.success) {
+        return { success: true };
+      } else {
+        return { success: false, error: 'Failed to exchange authorization code' };
+      }
+    } catch (error) {
+      console.error('[IPC] Google Drive callback error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Callback failed'
       };
     }
   });

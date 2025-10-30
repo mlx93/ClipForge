@@ -110,18 +110,8 @@ export const useExportStore = create<ExportStore>((set, get) => ({
       
       toast.success(`Export complete! Saved to ${outputPath?.split('/').pop() || 'file'}`);
       
-      // Close dialog immediately when export completes
-      set({ showExportDialog: false });
-      
-      // Reset export state after a short delay
-      setTimeout(() => {
-        set({
-          progress: 0,
-          currentStep: '',
-          exportStartTime: null,
-          estimatedTimeRemaining: null
-        });
-      }, 500);
+      // Keep dialog open to show "Share to Cloud" button
+      // Dialog will be closed when user clicks "Share to Cloud" or manually closes it
     } catch (error) {
       console.error('Export error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Export failed';

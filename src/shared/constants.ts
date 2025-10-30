@@ -58,7 +58,13 @@ export const IPC_CHANNELS = {
   START_RECORDING: 'start-recording',
   STOP_RECORDING: 'stop-recording',
   SAVE_RECORDING: 'save-recording',
-  REQUEST_MEDIA_PERMISSIONS: 'request-media-permissions'
+  REQUEST_MEDIA_PERMISSIONS: 'request-media-permissions',
+  // Google Drive channels
+  GOOGLE_DRIVE_INITIATE_AUTH: 'google-drive-initiate-auth',
+  GOOGLE_DRIVE_CHECK_AUTH: 'google-drive-check-auth',
+  GOOGLE_DRIVE_SIGN_OUT: 'google-drive-sign-out',
+  GOOGLE_DRIVE_UPLOAD: 'google-drive-upload',
+  GOOGLE_DRIVE_PROGRESS: 'google-drive-progress'
 } as const;
 
 // Error messages

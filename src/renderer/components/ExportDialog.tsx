@@ -122,7 +122,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {!isExporting ? (
+        {!isExporting && progress < 100 ? (
           <div className="space-y-4">
             {/* Project Info */}
             <div className="bg-gray-700 rounded p-3">
@@ -271,7 +271,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
 
             {/* Action Buttons */}
             <div className="space-y-2">
-              {progress === 100 && !error && (
+              {progress === 100 && !error && !isExporting && (
                 <button
                   onClick={() => {
                     setExportedVideoPath(settings.outputPath);
@@ -289,7 +289,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) => {
               }}
               className="w-full px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
             >
-              {error ? 'Close' : 'Cancel Export'}
+              {error ? 'Close' : progress === 100 ? 'Done' : 'Cancel Export'}
             </button>
             </div>
           </div>

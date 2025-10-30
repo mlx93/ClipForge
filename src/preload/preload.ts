@@ -66,6 +66,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   requestMediaPermissions: (params: { mic?: boolean; camera?: boolean }): Promise<{ success: boolean; granted?: { microphone: boolean; camera: boolean }; status?: any; denied?: string[]; needsGrant?: string[]; platform?: string; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.REQUEST_MEDIA_PERMISSIONS, params),
 
+  // Google Drive operations
+  googleDriveInitiateAuth: (): Promise<{ success: boolean; authUrl?: string; error?: string }> =>
+    ipcRenderer.invoke('google-drive-initiate-auth'),
+
+  googleDriveCheckAuth: (): Promise<{ authenticated: boolean }> =>
+    ipcRenderer.invoke('google-drive-check-auth'),
+
+  googleDriveSignOut: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('google-drive-sign-out'),
+
+  googleDriveUpload: (filePath: string, fileName: string): Promise<{ success: boolean; fileId?: string; shareUrl?: string; error?: string }> =>
+    ipcRenderer.invoke('google-drive-upload', { filePath, fileName }),
+
+  googleDriveHandleCallback: (code: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('google-drive-handle-callback', code),
+
+  onGoogleDriveProgress: (callback: (progress: { progress: number }) => void) =>
+    ipcRenderer.on('google-drive-progress', (_, progress) => callback(progress)),
+
   // Listen for events from main process
   onImportVideos: (callback: (filePaths: string[]) => void) => 
     ipcRenderer.on('import-videos', (_, filePaths) => callback(filePaths)),
@@ -110,6 +129,12 @@ declare global {
       startRecording: (params: { videoSourceId: string; audioEnabled: boolean; resolution: { width: number; height: number }; frameRate: number }) => Promise<{ success: boolean; constraints?: any; isWebcam?: boolean; error?: string }>;
       saveRecording: (arrayBuffer: ArrayBuffer) => Promise<{ success: boolean; filePath?: string; error?: string }>;
       requestMediaPermissions: (params: { mic?: boolean; camera?: boolean }) => Promise<{ success: boolean; granted?: { microphone: boolean; camera: boolean }; status?: any; denied?: string[]; needsGrant?: string[]; platform?: string; error?: string }>;
+      googleDriveInitiateAuth: () => Promise<{ success: boolean; authUrl?: string; error?: string }>;
+      googleDriveCheckAuth: () => Promise<{ authenticated: boolean }>;
+      googleDriveSignOut: () => Promise<{ success: boolean; error?: string }>;
+      googleDriveUpload: (filePath: string, fileName: string) => Promise<{ success: boolean; fileId?: string; shareUrl?: string; error?: string }>;
+      googleDriveHandleCallback: (code: string) => Promise<{ success: boolean; error?: string }>;
+      onGoogleDriveProgress: (callback: (progress: { progress: number }) => void) => void;
       onImportVideos: (callback: (filePaths: string[]) => void) => void;
       onTriggerExport: (callback: () => void) => void;
       onExportProgress: (callback: (progress: { progress: number; currentStep: string }) => void) => void;
