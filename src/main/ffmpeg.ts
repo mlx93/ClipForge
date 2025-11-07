@@ -140,19 +140,47 @@ export const exportTimeline = async (
     // Target frame rate for normalization (prevents frame duplication issues)
     const targetFrameRate = 30;
     
-    // Determine if we need scaling
-    const needsScaling = settings.resolution.name !== 'Source' && 
-                        settings.resolution.width > 0 && 
-                        settings.resolution.height > 0;
+    // Determine target resolution for normalization
+    // If "Source" is selected, find the largest resolution among all clips
+    // Otherwise, use the selected resolution
+    let targetWidth: number;
+    let targetHeight: number;
     
-    const scaleFilter = needsScaling 
-      ? `scale=${settings.resolution.width}:${settings.resolution.height}:force_original_aspect_ratio=decrease,pad=${settings.resolution.width}:${settings.resolution.height}:(ow-iw)/2:(oh-ih)/2`
-      : null;
+    if (settings.resolution.name === 'Source') {
+      // Find the maximum resolution from all clips
+      let maxWidth = 0;
+      let maxHeight = 0;
+      clips.forEach(clip => {
+        // Safety check: ensure width/height are valid numbers
+        if (clip.width && clip.width > maxWidth) maxWidth = clip.width;
+        if (clip.height && clip.height > maxHeight) maxHeight = clip.height;
+      });
+      
+      // Fallback to 1920x1080 if no valid resolution found (shouldn't happen)
+      if (maxWidth === 0 || maxHeight === 0) {
+        console.warn('[FFmpeg Export] No valid resolution found in clips, defaulting to 1920x1080');
+        targetWidth = 1920;
+        targetHeight = 1080;
+      } else {
+        targetWidth = maxWidth;
+        targetHeight = maxHeight;
+      }
+      console.log(`[FFmpeg Export] Source resolution selected, using max clip resolution: ${targetWidth}x${targetHeight}`);
+    } else {
+      // Use the selected resolution
+      targetWidth = settings.resolution.width;
+      targetHeight = settings.resolution.height;
+      console.log(`[FFmpeg Export] Using selected resolution: ${targetWidth}x${targetHeight}`);
+    }
+    
+    // Scale filter for normalizing all inputs to target resolution
+    // This ensures concat works with mixed resolutions (e.g., full screen + window recordings)
+    const normalizeScaleFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2`;
 
     // Handle multiple clips by concatenating them
     if (clips.length > 1) {
       // Build normalization filters for each input
-      // Normalize video to target frame rate and audio to 48kHz
+      // Normalize video resolution, frame rate, and audio sample rate
       const normalizationFilters: string[] = [];
       const normalizedVideoLabels: string[] = [];
       const normalizedAudioLabels: string[] = [];
@@ -161,8 +189,9 @@ export const exportTimeline = async (
         const videoLabel = `v${index}`;
         const audioLabel = `a${index}`;
         
-        // Normalize video frame rate to prevent duplication
-        normalizationFilters.push(`[${index}:v]fps=${targetFrameRate}[${videoLabel}]`);
+        // Normalize video: scale to target resolution, then normalize frame rate
+        // This ensures all videos have the same resolution before concat
+        normalizationFilters.push(`[${index}:v]${normalizeScaleFilter},fps=${targetFrameRate}[${videoLabel}]`);
         normalizedVideoLabels.push(`[${videoLabel}]`);
         
         // Normalize audio sample rate for consistency
@@ -192,65 +221,41 @@ export const exportTimeline = async (
       
       const filterConcat = `concat=n=${clips.length}:v=1:a=1[vconcat][aconcat]`;
       
-      // Build the complete filter chain: normalize → concat → scale (if needed)
-      let filterChain = normalizationFilters.join(';') + ';' + concatInputs.join('') + filterConcat;
+      // Build the complete filter chain: normalize (scale + fps) → concat
+      // All videos are already at target resolution, so no post-concat scaling needed
+      const filterChain = normalizationFilters.join(';') + ';' + concatInputs.join('') + filterConcat;
       
-      if (scaleFilter) {
-        filterChain += `;[vconcat]${scaleFilter}[outv]`;
-        command = command.complexFilter([filterChain]).outputOptions([
-          '-map [outv]',
-          '-map [aconcat]'
-        ]);
-      } else {
-        command = command.complexFilter([filterChain]).outputOptions([
-          '-map [vconcat]',
-          '-map [aconcat]'
-        ]);
-      }
+      command = command.complexFilter([filterChain]).outputOptions([
+        '-map [vconcat]',
+        '-map [aconcat]'
+      ]);
       
       console.log('[FFmpeg Export] Filter chain:', filterChain);
       console.log('[FFmpeg Export] Clips with audio:', clipsWithAudio);
       console.log('[FFmpeg Export] Silent audio indices:', Array.from(silentAudioInputIndices.entries()));
     } else {
-      // Single clip - normalize frame rate
+      // Single clip - normalize resolution and frame rate
       const hasAudio = clipsWithAudio[0];
       const singleClipFilters: string[] = [];
       
-      // Normalize video frame rate
-      singleClipFilters.push(`[0:v]fps=${targetFrameRate}[vnorm]`);
+      // Normalize video: scale to target resolution, then normalize frame rate
+      singleClipFilters.push(`[0:v]${normalizeScaleFilter},fps=${targetFrameRate}[vnorm]`);
       
       if (hasAudio) {
         // Normalize audio sample rate
         singleClipFilters.push(`[0:a]aresample=48000:async=1[anorm]`);
-        
-        if (scaleFilter) {
-          singleClipFilters.push(`[vnorm]${scaleFilter}[outv]`);
-          command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
-            '-map [outv]',
-            '-map [anorm]'
-          ]);
-        } else {
-          command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
-            '-map [vnorm]',
-            '-map [anorm]'
-          ]);
-        }
+        command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
+          '-map [vnorm]',
+          '-map [anorm]'
+        ]);
       } else {
         // No audio - use silent audio we generated
         const silentAudioIndex = silentAudioInputIndices.get(0);
         if (silentAudioIndex !== undefined) {
-          if (scaleFilter) {
-            singleClipFilters.push(`[vnorm]${scaleFilter}[outv]`);
-            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
-              '-map [outv]',
-              `-map ${silentAudioIndex}:a`
-            ]);
-          } else {
-            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
-              '-map [vnorm]',
-              `-map ${silentAudioIndex}:a`
-            ]);
-          }
+          command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
+            '-map [vnorm]',
+            `-map ${silentAudioIndex}:a`
+          ]);
         } else {
           // Fallback: generate silent audio on the fly
           const clip = clips[0];
@@ -261,18 +266,10 @@ export const exportTimeline = async (
           command.input('anullsrc=channel_layout=stereo:sample_rate=48000')
             .inputOptions(['-f', 'lavfi', '-t', clipDuration.toString()]);
           
-          if (scaleFilter) {
-            singleClipFilters.push(`[vnorm]${scaleFilter}[outv]`);
-            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
-              '-map [outv]',
-              '-map 1:a'
-            ]);
-          } else {
-            command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
-              '-map [vnorm]',
-              '-map 1:a'
-            ]);
-          }
+          command = command.complexFilter([singleClipFilters.join(';')]).outputOptions([
+            '-map [vnorm]',
+            '-map 1:a'
+          ]);
         }
       }
     }
