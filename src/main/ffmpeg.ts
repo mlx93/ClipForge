@@ -175,7 +175,8 @@ export const exportTimeline = async (
     
     // Scale filter for normalizing all inputs to target resolution
     // This ensures concat works with mixed resolutions (e.g., full screen + window recordings)
-    const normalizeScaleFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2`;
+    // setsar=1:1 normalizes Sample Aspect Ratio to square pixels (required for concat)
+    const normalizeScaleFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1:1`;
 
     // Handle multiple clips by concatenating them
     if (clips.length > 1) {
